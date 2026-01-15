@@ -125,6 +125,10 @@ class Trie {
   template <class T>
   auto Put(std::string_view key, T value) const -> Trie;
 
+  template <class T>
+  auto put_reversal(std::shared_ptr<TrieNode> p,int index,std::string_view key,T value) const -> std::shared_ptr<const TrieNode>;
+
+
   // Remove the key from the trie. If the key does not exist, return the original trie.
   // Otherwise, returns the new trie.
   auto Remove(std::string_view key) const -> Trie;
