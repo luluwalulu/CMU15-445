@@ -12,6 +12,15 @@ auto Trie::Get(std::string_view key) const -> const T * {
   // nullptr. After you find the node, you should use `dynamic_cast` to cast it to `const TrieNodeWithValue<T> *`. If
   // dynamic_cast returns `nullptr`, it means the type of the value is mismatched, and you should return nullptr.
   // Otherwise, return the value.
+  std::shared_ptr<const TrieNode> p(root_);
+  for(int i=0;i<key.size();i++){
+    if(p->children_.find(key[i])==p->children_.end()) return nullptr;
+    p=p->children_[key[i]];
+  }
+  if(!p->is_value_node_) return nullptr;
+  const TrieNodeWithValue<T>* final = dynamic_cast<const TrieNodeWithValue<T>*> (p);
+  if(final==nullptr) return nullptr;
+  return final.get();
 }
 
 template <class T>
@@ -21,6 +30,7 @@ auto Trie::Put(std::string_view key, T value) const -> Trie {
 
   // You should walk through the trie and create new nodes if necessary. If the node corresponding to the key already
   // exists, you should create a new `TrieNodeWithValue`.
+  
 }
 
 auto Trie::Remove(std::string_view key) const -> Trie {
