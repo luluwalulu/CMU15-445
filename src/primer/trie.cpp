@@ -12,14 +12,15 @@ auto Trie::Get(std::string_view key) const -> const T * {
   // Otherwise, return the value.
   if(root_==nullptr) return nullptr;
   std::shared_ptr<const TrieNode> p(root_);
-  for(int i=0;i<key.size();i++){
+  for(size_t i=0;i<key.size();i++){
     if(p->children_.find(key[i])==p->children_.end()) return nullptr;
-    p=p->children_[key[i]];
+    // 因为是在旧树上遍历，所以不能用[]，否则可能自动插入
+    p=p->children_.at(key[i]);
   }
   if(!p->is_value_node_) return nullptr;
-  const TrieNodeWithValue<T>* final = dynamic_cast<const TrieNodeWithValue<T>*> (p);
+  const TrieNodeWithValue<T>* final = dynamic_cast<const TrieNodeWithValue<T>*> (p.get());
   if(final==nullptr) return nullptr;
-  return final.get();
+  return final->value_.get();
 }
 
 // *******************************关于put和remove的递归函数写法总结**********************************
@@ -27,20 +28,21 @@ auto Trie::Get(std::string_view key) const -> const T * {
 // 递归的参数p含义是——最终返回以p为根的树在修改后的根节点
 
 template <class T>
-auto Trie::put_reversal(std::shared_ptr<TrieNode> p,int index,std::string_view key,T value) const -> std::shared_ptr<const TrieNode> {
+auto Trie::put_reversal(std::shared_ptr<TrieNode> p,size_t index,std::string_view key,T value) const -> std::shared_ptr<const TrieNode> {
   // 插入完成的终止条件
   if(index==key.size()){
-    shared_ptr<T> value=make_shared<T>(std::move(value));
-    return std::make_shared<TrieNodeWithValue>(value);
+    std::shared_ptr<T> val=std::make_shared<T>(std::move(value));
+    auto final = std::make_shared<TrieNodeWithValue<T>>(val);
+    return std::dynamic_pointer_cast<const TrieNode>(final);
   }
   std::shared_ptr<TrieNode> next;
   // 如果p的孩子中存在序号为index的对应节点
   if(p->children_.find(key[index])!=p->children_.end())
-    next=std::shared_ptr<TrieNode>(std::move(p->children_[key[index]]->Clone()));
+    next=std::shared_ptr<TrieNode>(p->children_[key[index]]->Clone());
   else
     next=std::make_shared<TrieNode>();
 
-  p->children_[key[index]]=put_reversal(next,index+1,key,val);
+  p->children_[key[index]]=put_reversal(next,index+1,key,std::move(value));
 
   return p; 
 }
@@ -56,7 +58,7 @@ auto Trie::Put(std::string_view key, T value) const -> Trie {
   if(!root_)
     newroot=std::make_shared<TrieNode>();
   else
-    newroot=std::shared_ptr<TrieNode>(std::move(root_->Clone()));
+    newroot=std::shared_ptr<TrieNode>(root_->Clone());
   put_reversal(newroot,0,key,std::move(value));
   return Trie(newroot);
 }
@@ -64,7 +66,7 @@ auto Trie::Put(std::string_view key, T value) const -> Trie {
 
 
 
-auto Trie::remove_reversal(std::shared_ptr<TrieNode> p,int index,std::string_view key) const -> std::shared_ptr<const TrieNode>{
+auto Trie::remove_reversal(std::shared_ptr<TrieNode> p,size_t index,std::string_view key) const -> std::shared_ptr<const TrieNode>{
   // 遍历到key对应的节点后，只需要返回一个改变类型的节点p就OK了。
   // 不能直接修改节点p，别忘了这是一棵不变树
   if(index==key.size()){
@@ -73,7 +75,7 @@ auto Trie::remove_reversal(std::shared_ptr<TrieNode> p,int index,std::string_vie
   std::shared_ptr<TrieNode> next;
   // 如果p的孩子中存在序号为index的对应节点
   if(p->children_.find(key[index])!=p->children_.end())
-    next=std::shared_ptr<TrieNode>(std::move(p->children_[key[index]]->Clone()));
+    next=std::shared_ptr<TrieNode>(p->children_[key[index]]->Clone());
   // 如果不存在的话，那么删除操作失败，无需创建新树了
   else
     return nullptr;
