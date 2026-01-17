@@ -83,9 +83,13 @@ auto Trie::remove_reversal(std::shared_ptr<TrieNode> p,size_t index,std::string_
   auto temp=remove_reversal(next,index+1,key);
   // 查找失败
   if(temp==nullptr) return nullptr;
-  // 删除成功
-  if(temp->children_.empty()&&!temp->is_value_node_) temp=nullptr;
-  p->children_[key[index]]=temp;
+
+  // 如果temp节点为光棍节点，那么应该用erase而非赋为nullptr。如果赋为nullptr则仍能通过find查找到，仍然被判定为节点存在
+  if(temp->children_.empty()&&!temp->is_value_node_){
+    p->children_.erase(key[index]);
+  }
+  else
+    p->children_[key[index]]=temp;
 
   return p; 
 }
@@ -96,10 +100,10 @@ auto Trie::Remove(std::string_view key) const -> Trie {
   // You should walk through the trie and remove nodes if necessary. If the node doesn't contain a value any more,
   // you should convert it to `TrieNode`. If a node doesn't have children any more, you should remove it.
 
-  // 查找失败
+  // 树为空
   if(!root_) return *this;
-  std::shared_ptr<TrieNode> newroot=std::make_shared<TrieNode>();
-  remove_reversal(newroot,0,key);
+  std::shared_ptr<TrieNode> newroot(root_->Clone());
+  newroot=remove_reversal(newroot,0,key);
   // 查找失败
   if(!newroot) return *this;
   // 如果newroot变成光杆司令了
