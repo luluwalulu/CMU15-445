@@ -11,20 +11,68 @@ auto TrieStore::Get(std::string_view key) -> std::optional<ValueGuard<T>> {
   // (2) Lookup the value in the trie.
   // (3) If the value is found, return a ValueGuard object that holds a reference to the value and the
   //     root. Otherwise, return std::nullopt.
-  throw NotImplementedException("TrieStore::Get is not implemented.");
+
+  root_lock_.lock();
+  // 如果Put和Remove正在将旧树修改为新树的瞬间，获取了old_Trie的话，那么就可能得到修改了一般的root_
+  // 因此，可以得知：
+    // root_lock_的作用是确保获取root时不会有任何其他进程修改root
+    // 或者修改root时不会有任何其他进程也在修改root
+  const auto& old_trie= root_;
+  root_lock_.unlock();
+
+  auto value=old_trie.Get<T>(key);
+  const auto& final_val=*value;
+
+  if(value==nullptr){
+    return std::nullopt;
+  }
+  else{
+    return std::make_optional<ValueGuard<T>>(old_trie,final_val);
+  }
 }
 
 template <class T>
 void TrieStore::Put(std::string_view key, T value) {
   // You will need to ensure there is only one writer at a time. Think of how you can achieve this.
   // The logic should be somehow similar to `TrieStore::Get`.
-  throw NotImplementedException("TrieStore::Put is not implemented.");
+
+  // 主要分三个阶段：1.拿到旧树  2.对旧树修改  3.将旧树修改为新树
+  // 哪些需要write_lock_保护
+  // 首先，两个并发的Put不能拿到同一个旧树然后进行修改，否则，它们之间会展开竞速，后完成的那个会将旧树修改为对应的新树，先完成的改动被覆盖
+  // 因此，所有过程都需要write_lock保护
+  // 如果不等到旧树被彻底修改为新树就获取root，那么其他进程就始终能够获取到旧树然后进行修改
+
+  write_lock_.lock();
+
+  root_lock_.lock();
+  const auto& old_trie=root_;
+  root_lock_.unlock();
+
+  const auto& new_trie=old_trie.Put<T>(key,std::move(value));
+
+  root_lock_.lock();
+  root_=std::move(new_trie);
+  root_lock_.unlock();
+
+  write_lock_.unlock();
 }
 
 void TrieStore::Remove(std::string_view key) {
   // You will need to ensure there is only one writer at a time. Think of how you can achieve this.
   // The logic should be somehow similar to `TrieStore::Get`.
-  throw NotImplementedException("TrieStore::Remove is not implemented.");
+  write_lock_.lock();
+
+  root_lock_.lock();
+  const auto& old_trie=root_;
+  root_lock_.unlock();
+
+  const auto& new_trie=old_trie.Remove(key);
+
+  root_lock_.lock();
+  root_=std::move(new_trie);
+  root_lock_.unlock();
+
+  write_lock_.unlock();
 }
 
 // Below are explicit instantiation of template functions.
