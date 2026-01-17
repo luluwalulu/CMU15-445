@@ -17,7 +17,7 @@ auto TrieStore::Get(std::string_view key) -> std::optional<ValueGuard<T>> {
   // 因此，可以得知：
     // root_lock_的作用是确保获取root时不会有任何其他进程修改root
     // 或者修改root时不会有任何其他进程也在修改root
-  const auto& old_trie= root_;
+  auto old_trie= root_;
   root_lock_.unlock();
 
   auto value=old_trie.Get<T>(key);
@@ -45,7 +45,7 @@ void TrieStore::Put(std::string_view key, T value) {
   write_lock_.lock();
 
   root_lock_.lock();
-  const auto& old_trie=root_;
+  auto old_trie=root_;
   root_lock_.unlock();
 
   const auto& new_trie=old_trie.Put<T>(key,std::move(value));
@@ -63,7 +63,7 @@ void TrieStore::Remove(std::string_view key) {
   write_lock_.lock();
 
   root_lock_.lock();
-  const auto& old_trie=root_;
+  auto old_trie=root_;
   root_lock_.unlock();
 
   const auto& new_trie=old_trie.Remove(key);

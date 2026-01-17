@@ -1,1 +1,15 @@
-Task1通过。
+当前bug：
+
+很龟的写法：==86633==ERROR: 
+AddressSanitizer: heap-use-after-free on address 0x603000c01008 at pc 0x5fa2f6fda542 bp 0x7ab6707f7390 sp 0x7ab6707f7388
+
+Put和Remove过程不用root_lock_保护:
+==87835==ERROR: AddressSanitizer: attempting double-free on 0x606008eea760 in thread T1.
+或者==88540==ERROR: AddressSanitizer: heap-use-after-free on address 0x603000c03260 at pc 0x56db7f1a8d4a bp 0x7baa98ff7280 sp 0x7baa98ff7278
+
+线索：如何获取旧树，应该是错误的原因
+
+修复：正如线索中提到的那样，之前我通过常量引用的方式获取旧树。由于Trie_store是对Trie的封装，
+而Trie又是对shared_ptr root_的封装。使用常量引用获取Trie不会使root_的引用计数++，一旦旧树被修改，
+仍面临悬空指针的危险。确保旧树不会被销毁，应该使用值拷贝的方式拷贝旧树。拷贝Trie就是在拷贝shared_ptr，增加引用计数。
+这也是为什么ValueGuard中保存的是Trie的值类型。
