@@ -58,21 +58,21 @@ TEST(TrieTest, BasicPutGetTest) {
 
 TEST(TrieTest, PutGetOnePath) {
   auto trie = Trie();
-  std::cout<<1111<<std::endl;
+  std::cout << 1111 << std::endl;
   trie = trie.Put<uint32_t>("111", 111);
-  std::cout<<111<<std::endl;
+  std::cout << 111 << std::endl;
   trie = trie.Put<uint32_t>("11", 11);
-  std::cout<<1<<std::endl;
+  std::cout << 1 << std::endl;
   trie = trie.Put<uint32_t>("1111", 1111);
   trie = trie.Put<uint32_t>("11", 22);
-  std::cout<<2<<std::endl;
+  std::cout << 2 << std::endl;
   ASSERT_EQ(*trie.Get<uint32_t>("11"), 22);
-  std::cout<<3<<std::endl;
-  
+  std::cout << 3 << std::endl;
+
   ASSERT_EQ(*trie.Get<uint32_t>("111"), 111);
-  std::cout<<4<<std::endl;
+  std::cout << 4 << std::endl;
   ASSERT_EQ(*trie.Get<uint32_t>("1111"), 1111);
-  std::cout<<5<<std::endl;
+  std::cout << 5 << std::endl;
 }
 
 TEST(TrieTest, BasicRemoveTest1) {
@@ -86,18 +86,18 @@ TEST(TrieTest, BasicRemoveTest1) {
   ASSERT_EQ(*trie.Get<uint32_t>("tes"), 233);
   // Delete something
   trie = trie.Remove("test");
-  std::cout<<1<<std::endl;
+  std::cout << 1 << std::endl;
   trie = trie.Remove("tes");
-  std::cout<<2<<std::endl;
+  std::cout << 2 << std::endl;
   trie = trie.Remove("te");
-  std::cout<<3<<std::endl;
+  std::cout << 3 << std::endl;
 
   ASSERT_EQ(trie.Get<uint32_t>("te"), nullptr);
-  std::cout<<4<<std::endl;
+  std::cout << 4 << std::endl;
   ASSERT_EQ(trie.Get<uint32_t>("tes"), nullptr);
-  std::cout<<5<<std::endl;
+  std::cout << 5 << std::endl;
   ASSERT_EQ(trie.Get<uint32_t>("test"), nullptr);
-  std::cout<<6<<std::endl;
+  std::cout << 6 << std::endl;
 }
 
 TEST(TrieTest, BasicRemoveTest2) {

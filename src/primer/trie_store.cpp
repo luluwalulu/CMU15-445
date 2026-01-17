@@ -15,20 +15,18 @@ auto TrieStore::Get(std::string_view key) -> std::optional<ValueGuard<T>> {
   root_lock_.lock();
   // 如果Put和Remove正在将旧树修改为新树的瞬间，获取了old_Trie的话，那么就可能得到修改了一般的root_
   // 因此，可以得知：
-    // root_lock_的作用是确保获取root时不会有任何其他进程修改root
-    // 或者修改root时不会有任何其他进程也在修改root
-  auto old_trie= root_;
+  // root_lock_的作用是确保获取root时不会有任何其他进程修改root
+  // 或者修改root时不会有任何其他进程也在修改root
+  auto old_trie = root_;
   root_lock_.unlock();
 
-  auto value=old_trie.Get<T>(key);
-  const auto& final_val=*value;
+  auto value = old_trie.Get<T>(key);
+  const auto &final_val = *value;
 
-  if(value==nullptr){
+  if (value == nullptr) {
     return std::nullopt;
   }
-  else{
-    return std::make_optional<ValueGuard<T>>(old_trie,final_val);
-  }
+  return std::make_optional<ValueGuard<T>>(old_trie, final_val);
 }
 
 template <class T>
@@ -45,13 +43,13 @@ void TrieStore::Put(std::string_view key, T value) {
   write_lock_.lock();
 
   root_lock_.lock();
-  auto old_trie=root_;
+  auto old_trie = root_;
   root_lock_.unlock();
 
-  const auto& new_trie=old_trie.Put<T>(key,std::move(value));
+  const auto &new_trie = old_trie.Put<T>(key, std::move(value));
 
   root_lock_.lock();
-  root_=std::move(new_trie);
+  root_ = std::move(new_trie);
   root_lock_.unlock();
 
   write_lock_.unlock();
@@ -63,13 +61,13 @@ void TrieStore::Remove(std::string_view key) {
   write_lock_.lock();
 
   root_lock_.lock();
-  auto old_trie=root_;
+  auto old_trie = root_;
   root_lock_.unlock();
 
-  const auto& new_trie=old_trie.Remove(key);
+  const auto &new_trie = old_trie.Remove(key);
 
   root_lock_.lock();
-  root_=std::move(new_trie);
+  root_ = new_trie;
   root_lock_.unlock();
 
   write_lock_.unlock();
