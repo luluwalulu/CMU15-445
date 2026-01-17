@@ -110,9 +110,9 @@ class Trie {
   explicit Trie(std::shared_ptr<const TrieNode> root) : root_(std::move(root)) {}
 
   template <class T>
-  auto put_reversal(std::shared_ptr<TrieNode> p,size_t index,std::string_view key,T value) const -> std::shared_ptr<const TrieNode>;
+  auto put_reversal(std::shared_ptr<TrieNode> p,size_t index,std::string_view key,T value) const -> std::shared_ptr<TrieNode>;
 
-  auto remove_reversal(std::shared_ptr<TrieNode> p,size_t index,std::string_view key) const -> std::shared_ptr<const TrieNode>;
+  auto remove_reversal(std::shared_ptr<TrieNode> p,size_t index,std::string_view key) const -> std::shared_ptr<TrieNode>;
 
  public:
   // Create an empty trie.
