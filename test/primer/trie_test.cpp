@@ -58,13 +58,21 @@ TEST(TrieTest, BasicPutGetTest) {
 
 TEST(TrieTest, PutGetOnePath) {
   auto trie = Trie();
+  std::cout<<1111<<std::endl;
   trie = trie.Put<uint32_t>("111", 111);
+  std::cout<<111<<std::endl;
   trie = trie.Put<uint32_t>("11", 11);
+  std::cout<<1<<std::endl;
   trie = trie.Put<uint32_t>("1111", 1111);
   trie = trie.Put<uint32_t>("11", 22);
+  std::cout<<2<<std::endl;
   ASSERT_EQ(*trie.Get<uint32_t>("11"), 22);
+  std::cout<<3<<std::endl;
+  
   ASSERT_EQ(*trie.Get<uint32_t>("111"), 111);
+  std::cout<<4<<std::endl;
   ASSERT_EQ(*trie.Get<uint32_t>("1111"), 1111);
+  std::cout<<5<<std::endl;
 }
 
 TEST(TrieTest, BasicRemoveTest1) {

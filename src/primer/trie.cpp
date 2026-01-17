@@ -31,8 +31,8 @@ template <class T>
 auto Trie::put_reversal(std::shared_ptr<TrieNode> p,size_t index,std::string_view key,T value) const -> std::shared_ptr<TrieNode> {
   // 插入完成的终止条件
   if(index==key.size()){
-    std::shared_ptr<T> val=std::make_shared<T>(std::move(value));
-    auto final = std::make_shared<TrieNodeWithValue<T>>(val);
+    std::shared_ptr<T> val_ptr=std::make_shared<T>(std::move(value));
+    auto final = std::make_shared<TrieNodeWithValue<T>>(p->children_,val_ptr);
     return std::dynamic_pointer_cast<TrieNode>(final);
   }
   std::shared_ptr<TrieNode> next;
