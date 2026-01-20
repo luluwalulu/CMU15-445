@@ -23,7 +23,7 @@ auto LRUKNode::Size() const -> size_t { return history_.size(); }
 
 auto LRUKNode::EarliestStamp() const -> size_t { return history_.front(); }
 
-void LRUKNode::Insert(size_t curr_timestamp,size_t k) {
+void LRUKNode::Insert(size_t curr_timestamp, size_t k) {
   if (history_.size() == k) {
     history_.erase(history_.begin());
   }
@@ -47,9 +47,9 @@ auto LRUKReplacer::Evict(frame_id_t *frame_id) -> bool {
 
   frame_id_t max_fid;
   size_t max_kdist = 0;
-  for (const auto& p : node_store_) {
-    auto& knode = p.second;
-    auto& fid = p.first;
+  for (const auto &p : node_store_) {
+    auto &knode = p.second;
+    auto &fid = p.first;
 
     // 不能驱逐
     if (!knode.GetEvictable()) {
@@ -94,7 +94,7 @@ void LRUKReplacer::RecordAccess(frame_id_t frame_id, [[maybe_unused]] AccessType
     throw Exception("LRUKReplacer::RecordAccess");
   }
 
-  node_store_[frame_id].Insert(current_timestamp_,k_);
+  node_store_[frame_id].Insert(current_timestamp_, k_);
   current_timestamp_++;
 
   latch_.unlock();
@@ -145,9 +145,9 @@ void LRUKReplacer::Remove(frame_id_t frame_id) {
 
 auto LRUKReplacer::Size() -> size_t {
   latch_.lock();
-  auto i=curr_size_;
+  auto i = curr_size_;
   latch_.unlock();
-  return i; 
+  return i;
 }
 
 }  // namespace bustub

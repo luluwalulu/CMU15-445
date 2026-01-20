@@ -34,8 +34,25 @@ DiskScheduler::~DiskScheduler() {
   }
 }
 
-void DiskScheduler::Schedule(DiskRequest r) {}
+void DiskScheduler::Schedule(DiskRequest r) { request_queue_.Put(std::move(r)); }
 
-void DiskScheduler::StartWorkerThread() {}
+void DiskScheduler::StartWorkerThread() {
+  while (true) {
+    auto opt_request = request_queue_.Get();
+    if (opt_request == std::nullopt) {
+      return;
+    }
+
+    auto &request = opt_request.value();
+
+    if (request.is_write_) {
+      disk_manager_->WritePage(request.page_id_, request.data_);
+    } else {
+      disk_manager_->ReadPage(request.page_id_, request.data_);
+    }
+
+    request.callback_.set_value(true);
+  }
+}
 
 }  // namespace bustub

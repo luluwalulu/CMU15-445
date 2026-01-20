@@ -45,7 +45,7 @@ class LRUKNode {
 
   auto Size() const -> size_t;
 
-  void Insert(size_t curr_timestamp,size_t k);
+  void Insert(size_t curr_timestamp, size_t k);
 };
 
 /**
