@@ -90,6 +90,7 @@ void LRUKReplacer::RecordAccess(frame_id_t frame_id, [[maybe_unused]] AccessType
   latch_.lock();
 
   if (static_cast<uint32_t>(frame_id) > replacer_size_) {
+    latch_.unlock();
     throw Exception("LRUKReplacer::RecordAccess");
   }
 
@@ -104,6 +105,7 @@ void LRUKReplacer::SetEvictable(frame_id_t frame_id, bool set_evictable) {
 
   auto it = node_store_.find(frame_id);
   if (it == node_store_.end()) {
+    latch_.unlock();
     throw Exception("LRUKReplacer::SetEvictable");
   }
   bool old = it->second.GetEvictable();
@@ -124,11 +126,13 @@ void LRUKReplacer::Remove(frame_id_t frame_id) {
   latch_.lock();
 
   if (node_store_.find(frame_id) == node_store_.end()) {
+    latch_.unlock();
     return;
   }
 
   auto knode = node_store_[frame_id];
   if (!node_store_[frame_id].GetEvictable()) {
+    latch_.unlock();
     throw Exception("LRUKReplacer::Remove");
   }
 

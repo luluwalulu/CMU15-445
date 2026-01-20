@@ -59,6 +59,7 @@ class LRUKNode {
  * +inf as its backward k-distance. When multiple frames have +inf backward k-distance,
  * classical LRU algorithm is used to choose victim.
  */
+
 class LRUKReplacer {
  public:
   /**
