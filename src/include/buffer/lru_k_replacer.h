@@ -28,12 +28,24 @@ enum class AccessType { Unknown = 0, Lookup, Scan, Index };
 class LRUKNode {
  private:
   /** History of last seen K timestamps of this page. Least recent timestamp stored in front. */
+  // 此页面的最近 K 次访问时间戳的历史记录。最早的时间戳存储在最前面
   // Remove maybe_unused if you start using them. Feel free to change the member variables as you want.
 
-  [[maybe_unused]] std::list<size_t> history_;
+  std::list<size_t> history_;
   [[maybe_unused]] size_t k_;
   [[maybe_unused]] frame_id_t fid_;
-  [[maybe_unused]] bool is_evictable_{false};
+  bool is_evictable_{false};
+
+ public:
+  auto GetEvictable() const -> bool;
+
+  void SetEvictable(bool evictable);
+
+  auto EarliestStamp() const -> size_t;
+
+  auto Size() const -> size_t;
+
+  void Insert(size_t curr_timestamp,size_t k);
 };
 
 /**
@@ -150,12 +162,20 @@ class LRUKReplacer {
  private:
   // TODO(student): implement me! You can replace these member variables as you like.
   // Remove maybe_unused if you start using them.
-  [[maybe_unused]] std::unordered_map<frame_id_t, LRUKNode> node_store_;
-  [[maybe_unused]] size_t current_timestamp_{0};
-  [[maybe_unused]] size_t curr_size_{0};
-  [[maybe_unused]] size_t replacer_size_;
-  [[maybe_unused]] size_t k_;
-  [[maybe_unused]] std::mutex latch_;
+  std::unordered_map<frame_id_t, LRUKNode> node_store_;
+
+  // 当前时间戳
+  size_t current_timestamp_{0};
+
+  // 可驱逐页面数量
+  size_t curr_size_{0};
+
+  // Replacer能够存储页面的最大数量
+  size_t replacer_size_;
+
+  // LRU-K策略K的大小
+  size_t k_;
+  std::mutex latch_;
 };
 
 }  // namespace bustub
