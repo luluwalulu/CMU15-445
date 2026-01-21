@@ -45,8 +45,10 @@ auto LRUKReplacer::Evict(frame_id_t *frame_id) -> bool {
   frame_id_t inf_fid = -1;
   size_t inf_earliest_stamp;
 
-  frame_id_t max_fid;
+  frame_id_t max_fid = -1;
   size_t max_kdist = 0;
+
+  bool could_evict = false;
   for (const auto &p : node_store_) {
     auto &knode = p.second;
     auto &fid = p.first;
@@ -55,6 +57,7 @@ auto LRUKReplacer::Evict(frame_id_t *frame_id) -> bool {
     if (!knode.GetEvictable()) {
       continue;
     }
+    could_evict=true;
 
     // 对应inf
     if (knode.Size() != k_) {
@@ -69,6 +72,10 @@ auto LRUKReplacer::Evict(frame_id_t *frame_id) -> bool {
       max_kdist = current_timestamp_ - knode.EarliestStamp();
       max_fid = fid;
     }
+  }
+
+  if(!could_evict) {
+    return false;
   }
 
   frame_id_t erase_fid;

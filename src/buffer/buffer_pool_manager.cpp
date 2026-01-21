@@ -38,17 +38,141 @@ BufferPoolManager::BufferPoolManager(size_t pool_size, DiskManager *disk_manager
 
 BufferPoolManager::~BufferPoolManager() { delete[] pages_; }
 
-auto BufferPoolManager::NewPage(page_id_t *page_id) -> Page * { return nullptr; }
+auto BufferPoolManager::NewPage(page_id_t *page_id) -> Page * {
+  // 先获取缓冲区的槽位，即frame_id_t
+  // 先尝试从freelist获取，不然尝试驱逐
+  frame_id_t frame_id = -1;
+  latch_.lock();
+
+  if (!free_list_.empty()){
+    frame_id=free_list_.front();
+    free_list_.erase(free_list_.begin());
+  } else {
+    // 驱逐失败
+    if(!replacer_->Evict(&frame_id)) {
+      frame_id = -1;
+    }
+  }
+
+  // 从freelist获取 和 驱逐都尝试失败
+  if(frame_id==-1){
+    latch_.unlock();
+    return nullptr;
+  }
+
+  // 腾出槽位后,先将旧的信息刷回磁盘，然后再将新的page放入对应位置
+  auto next_id = AllocatePage();
+  auto& page = pages_[frame_id];
+
+  if(page.IsDirty()){
+    auto promise = disk_scheduler_->CreatePromise();
+    auto futrue = promise.get_future();
+    disk_scheduler_->Schedule({true,page.data_,page.page_id_,std::move(promise)});
+    futrue.get();
+  }
+
+  page_table_.emplace(next_id,frame_id);
+
+  // 初始化data和metadata
+  page.ResetMemory();
+  page.page_id_=next_id;
+  page.pin_count_=1;
+  page.is_dirty_=false;
+
+  replacer_->SetEvictable(frame_id,false);
+  replacer_->RecordAccess(frame_id);
+
+  latch_.unlock();
+
+  *page_id=next_id;
+  return &page;
+}
 
 auto BufferPoolManager::FetchPage(page_id_t page_id, [[maybe_unused]] AccessType access_type) -> Page * {
-  return nullptr;
+  // 从磁盘中读取页号为page_id的页，该页可能仍然存在，也有可能之前已经被替换了
+  latch_.lock();
+
+  frame_id_t frame_id;
+
+  // 如果该page仍然存在，直接返回就行
+  if (page_table_.find(page_id)!=page_table_.end()){
+    frame_id = page_table_[page_id];
+    latch_.unlock();
+    auto& page = pages_[frame_id];
+    page.pin_count_++;
+    return &page;
+  }
+
+  // 如果该page已经不存在
+  if (!free_list_.empty()){
+    frame_id=free_list_.front();
+    free_list_.erase(free_list_.begin());
+  } else {
+    // 驱逐失败
+    if(!replacer_->Evict(&frame_id)) {
+      latch_.unlock();
+      return nullptr;
+    }
+  }
+
+  // 腾出槽位后,先将旧的信息刷回磁盘，然后再将对应page放入对应位置中
+  auto& page = pages_[frame_id];
+
+  if(page.IsDirty()){
+    auto promise = disk_scheduler_->CreatePromise();
+    auto futrue = promise.get_future();
+    disk_scheduler_->Schedule({true,page.data_,page.page_id_,std::move(promise)});
+    futrue.get();
+  }
+
+  auto promise = disk_scheduler_->CreatePromise();
+  auto futrue = promise.get_future();
+  disk_scheduler_->Schedule({false,(char*)&pages_[frame_id],page_id,std::move(promise)});
+  
+  page_table_.emplace(page_id,frame_id);
+
+  page.page_id_=page_id;
+  page.pin_count_=1;
+  page.is_dirty_=false;
+
+  replacer_->SetEvictable(frame_id,false);
+  replacer_->RecordAccess(frame_id);
+
+  futrue.get();
+
+  latch_.unlock();
+
+  return &page;
 }
 
 auto BufferPoolManager::UnpinPage(page_id_t page_id, bool is_dirty, [[maybe_unused]] AccessType access_type) -> bool {
   return false;
 }
 
-auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool { return false; }
+auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
+  // DiskRequest r{true,(char*)pages_[]}
+  // disk_scheduler_->Schedule();
+  latch_.lock();
+
+  if(page_table_.find(page_id)==page_table_.end()){
+    latch_.unlock();
+    return false;
+  }
+
+  auto promise = disk_scheduler_->CreatePromise();
+  auto futrue = promise.get_future();
+  auto frame_id = page_table_[page_id];
+  auto& page = pages_[frame_id];
+
+  disk_scheduler_->Schedule({true,page.data_,page_id,std::move(promise)});
+
+  futrue.get();
+
+  page.is_dirty_=false;
+
+  latch_.unlock();
+  return true;
+}
 
 void BufferPoolManager::FlushAllPages() {}
 
