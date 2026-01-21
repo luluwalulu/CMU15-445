@@ -1,0 +1,2 @@
+当前bug：内存泄漏
+解决：没有删throw NotImplementedException。
