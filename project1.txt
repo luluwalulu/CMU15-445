@@ -1,7 +1,10 @@
 当前bug：
 memcmp失败，打印page[0]后其中全为0，数据没有更新到磁盘上
 发现线索：对于驱逐的页，没有在page_table_中删除它
-
+解决：在page_table_中删除它，但是需要注意，只要驱逐发生，就应该驱逐它。
+由于page获取方式有free_list和驱逐两种，得到的page要么是空页，page号为
+INVALID_PAGE_ID，要么是真正的page_id，可以不区分两种情况直接
+erase(page.page_id)。
 
 
 

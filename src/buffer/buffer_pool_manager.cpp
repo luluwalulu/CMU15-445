@@ -67,11 +67,10 @@ auto BufferPoolManager::NewPage(page_id_t *page_id) -> Page * {
     auto futrue = promise.get_future();
     disk_scheduler_->Schedule({true, page.data_, page.page_id_, std::move(promise)});
     futrue.get();
-
-    // 还应该在page_table_中删除旧的page_id
-    page_table_.erase(page.page_id_);
   }
 
+  // 还应该在page_table_中删除旧的page_id
+  page_table_.erase(page.page_id_);
   page_table_.emplace(next_id, frame_id);
 
   // 初始化data和metadata
@@ -124,15 +123,14 @@ auto BufferPoolManager::FetchPage(page_id_t page_id, [[maybe_unused]] AccessType
     auto futrue = promise.get_future();
     disk_scheduler_->Schedule({true, page.data_, page.page_id_, std::move(promise)});
     futrue.get();
-
-    page_table_.erase(page.page_id_);
   }
+
+  page_table_.erase(page.page_id_);
+  page_table_.emplace(page_id, frame_id);
 
   auto promise = disk_scheduler_->CreatePromise();
   auto futrue = promise.get_future();
   disk_scheduler_->Schedule({false, page.data_, page_id, std::move(promise)});
-
-  page_table_.emplace(page_id, frame_id);
 
   page.page_id_ = page_id;
   page.pin_count_ = 1;
