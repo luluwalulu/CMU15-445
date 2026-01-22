@@ -97,9 +97,9 @@ auto BufferPoolManager::FetchPage(page_id_t page_id, [[maybe_unused]] AccessType
   // 如果该page仍然存在，直接返回就行
   if (page_table_.find(page_id)!=page_table_.end()){
     frame_id = page_table_[page_id];
-    latch_.unlock();
     auto& page = pages_[frame_id];
     page.pin_count_++;
+    latch_.unlock();
     return &page;
   }
 
@@ -146,7 +146,28 @@ auto BufferPoolManager::FetchPage(page_id_t page_id, [[maybe_unused]] AccessType
 }
 
 auto BufferPoolManager::UnpinPage(page_id_t page_id, bool is_dirty, [[maybe_unused]] AccessType access_type) -> bool {
-  return false;
+  latch_.lock();
+
+  if(page_table_.find(page_id)==page_table_.end()) {
+    latch_.unlock();
+    return false;
+  }
+
+  auto frame_id = page_table_[page_id];
+  auto& page = pages_[frame_id];
+  if(page.pin_count_ == 0){
+    latch_.unlock();
+    return false;
+  }
+
+  if(--page.pin_count_ == 0){
+    replacer_->SetEvictable(frame_id,true);
+  }
+
+  page.is_dirty_ = is_dirty;
+
+  latch_.unlock();
+  return true;
 }
 
 auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
@@ -174,9 +195,59 @@ auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
   return true;
 }
 
-void BufferPoolManager::FlushAllPages() {}
+void BufferPoolManager::FlushAllPages() {
+  latch_.lock();
 
-auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool { return false; }
+  for(auto p:page_table_){
+    auto promise = disk_scheduler_->CreatePromise();
+    auto futrue = promise.get_future();
+    auto page_id = p.first;
+    auto frame_id = p.second;
+    auto& page = pages_[frame_id];
+
+    disk_scheduler_->Schedule({true,page.data_,page_id,std::move(promise)});
+
+    // 每一次都强制等到接收值后才到下一次遍历
+    futrue.get();
+
+    page.is_dirty_=false;
+  }
+
+  latch_.unlock();
+}
+
+auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
+  latch_.lock();
+
+  if(page_table_.find(page_id) == page_table_.end()){
+    latch_.unlock();
+    return false;
+  }
+
+  auto frame_id = page_table_[page_id];
+  auto& page = pages_[frame_id];
+
+  if(page.pin_count_){
+    latch_.unlock();
+    return false;
+  }
+
+  page_table_.erase(page_id);
+
+  replacer_->Remove(frame_id);
+
+  free_list_.emplace_back(frame_id);
+
+  page.ResetMemory();
+  page.page_id_=INVALID_PAGE_ID;
+  page.pin_count_=0;
+  page.is_dirty_=false;
+
+  DeallocatePage(page_id);
+
+  latch_.unlock();
+  return true;
+}
 
 auto BufferPoolManager::AllocatePage() -> page_id_t { return next_page_id_++; }
 
