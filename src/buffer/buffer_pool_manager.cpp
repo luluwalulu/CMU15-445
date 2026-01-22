@@ -99,6 +99,7 @@ auto BufferPoolManager::FetchPage(page_id_t page_id, [[maybe_unused]] AccessType
     frame_id = page_table_[page_id];
     auto &page = pages_[frame_id];
     page.pin_count_++;
+    replacer_->SetEvictable(frame_id, false);
     latch_.unlock();
     return &page;
   }
