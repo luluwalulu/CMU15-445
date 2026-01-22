@@ -57,7 +57,7 @@ auto LRUKReplacer::Evict(frame_id_t *frame_id) -> bool {
     if (!knode.GetEvictable()) {
       continue;
     }
-    could_evict=true;
+    could_evict = true;
 
     // 对应inf
     if (knode.Size() != k_) {
@@ -74,7 +74,8 @@ auto LRUKReplacer::Evict(frame_id_t *frame_id) -> bool {
     }
   }
 
-  if(!could_evict) {
+  if (!could_evict) {
+    latch_.unlock();
     return false;
   }
 

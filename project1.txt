@@ -1,2 +1,20 @@
-当前bug：内存泄漏
+当前bug：
+memcmp失败，打印page[0]后其中全为0，数据没有更新到磁盘上
+发现线索：对于驱逐的页，没有在page_table_中删除它
+
+
+
+
+已解决bug：
+系统崩溃
+打印1后，在测试场景Scenario: Once the buffer pool is full, we should not be able to create any new pages下卡住，不打印2也不报错
+LRUKReplacer的一个分支返回前忘记unlock
+
+
+Task3抛出错误"LRUKReplacer::SetEvictable"
+原因：NewPage和FetchPage中先SetEvictable，再RecordAccess，导致有可能node_store_
+中还未插入node，就在设置Evictable
+
+
+Task2内存泄漏
 解决：没有删throw NotImplementedException。
