@@ -1,0 +1,6 @@
+已解决bug：
+测试结束时调用析构函数时显式对0x30调用了UnLatch
+解决：发现是ReadPageGuard和WritePageGuard的Drop函数没有检查page_是否为空
+
+buffer pool中的unpin函数，对于脏页标志，如果已经设置了脏页标志，
+Unpin函数无权取消它。Unpin函数只能置位脏页标志而不能取消它。
