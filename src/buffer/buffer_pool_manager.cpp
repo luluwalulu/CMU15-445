@@ -166,7 +166,7 @@ auto BufferPoolManager::UnpinPage(page_id_t page_id, bool is_dirty, [[maybe_unus
     replacer_->SetEvictable(frame_id, true);
   }
 
-  page.is_dirty_ = is_dirty;
+  page.is_dirty_ = is_dirty || page.is_dirty_;
 
   latch_.unlock();
   return true;
