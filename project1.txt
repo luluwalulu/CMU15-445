@@ -1,4 +1,9 @@
 当前bug：
+驱逐的逻辑疑似有误
+发现是FetchPage中，page已存在时，只对pin_count++，没有设置evictable变量
+
+
+已解决bug：
 memcmp失败，打印page[0]后其中全为0，数据没有更新到磁盘上
 发现线索：对于驱逐的页，没有在page_table_中删除它
 解决：在page_table_中删除它，但是需要注意，只要驱逐发生，就应该驱逐它。
@@ -7,8 +12,6 @@ INVALID_PAGE_ID，要么是真正的page_id，可以不区分两种情况直接
 erase(page.page_id)。
 
 
-
-已解决bug：
 系统崩溃
 打印1后，在测试场景Scenario: Once the buffer pool is full, we should not be able to create any new pages下卡住，不打印2也不报错
 LRUKReplacer的一个分支返回前忘记unlock
