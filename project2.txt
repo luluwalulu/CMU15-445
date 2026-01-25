@@ -1,4 +1,6 @@
 已解决bug：
+header中默认最大深度为2了
+
 测试结束时调用析构函数时显式对0x30调用了UnLatch
 解决：发现是ReadPageGuard和WritePageGuard的Drop函数没有检查page_是否为空
 

@@ -20,9 +20,7 @@
 
 namespace bustub {
 
-void ExtendibleHTableDirectoryPage::Init(uint32_t max_depth) {
-  max_depth = max_depth;
-}
+void ExtendibleHTableDirectoryPage::Init(uint32_t max_depth) { max_depth_ = max_depth; }
 
 auto ExtendibleHTableDirectoryPage::HashToBucketIndex(uint32_t hash) const -> uint32_t {
   return hash & ((1 << global_depth_) - 1);
@@ -38,25 +36,19 @@ void ExtendibleHTableDirectoryPage::SetBucketPageId(uint32_t bucket_idx, page_id
 
 auto ExtendibleHTableDirectoryPage::GetSplitImageIndex(uint32_t bucket_idx) const -> uint32_t {
   auto local_depth = local_depths_[bucket_idx];
-  return (1<<local_depth) | bucket_idx;
+  return (1 << local_depth) | bucket_idx;
 }
 
-auto ExtendibleHTableDirectoryPage::GetGlobalDepth() const -> uint32_t {
-  return global_depth_;
-}
+auto ExtendibleHTableDirectoryPage::GetGlobalDepth() const -> uint32_t { return global_depth_; }
 
-void ExtendibleHTableDirectoryPage::IncrGlobalDepth() {
-  global_depth_++;
-}
+void ExtendibleHTableDirectoryPage::IncrGlobalDepth() { global_depth_++; }
 
-void ExtendibleHTableDirectoryPage::DecrGlobalDepth() {
-  global_depth_--;
-}
+void ExtendibleHTableDirectoryPage::DecrGlobalDepth() { global_depth_--; }
 
 auto ExtendibleHTableDirectoryPage::CanShrink() -> bool {
   // 如果所有桶的局部深度都小于全局深度，则可以收缩
-  for(int i=0;i<Size();i++){
-    if(local_depths_[i]==global_depth_) {
+  for (size_t i = 0; i < Size(); i++) {
+    if (local_depths_[i] == global_depth_) {
       return false;
     }
   }
@@ -64,9 +56,7 @@ auto ExtendibleHTableDirectoryPage::CanShrink() -> bool {
   return true;
 }
 
-auto ExtendibleHTableDirectoryPage::Size() const -> uint32_t {
-  return 1<<global_depth_;
-}
+auto ExtendibleHTableDirectoryPage::Size() const -> uint32_t { return 1 << global_depth_; }
 
 auto ExtendibleHTableDirectoryPage::GetLocalDepth(uint32_t bucket_idx) const -> uint32_t {
   return local_depths_[bucket_idx];
@@ -76,12 +66,8 @@ void ExtendibleHTableDirectoryPage::SetLocalDepth(uint32_t bucket_idx, uint8_t l
   local_depths_[bucket_idx] = local_depth;
 }
 
-void ExtendibleHTableDirectoryPage::IncrLocalDepth(uint32_t bucket_idx) {
-  local_depths_[bucket_idx]++;
-}
+void ExtendibleHTableDirectoryPage::IncrLocalDepth(uint32_t bucket_idx) { local_depths_[bucket_idx]++; }
 
-void ExtendibleHTableDirectoryPage::DecrLocalDepth(uint32_t bucket_idx) {
-  local_depths_[bucket_idx]--;
-}
+void ExtendibleHTableDirectoryPage::DecrLocalDepth(uint32_t bucket_idx) { local_depths_[bucket_idx]--; }
 
 }  // namespace bustub
