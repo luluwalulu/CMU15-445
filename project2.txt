@@ -1,5 +1,13 @@
+当前bug：
+
+
+
 已解决bug：
-header中默认最大深度为2了
+未能解决Verify: (2) Each bucket has precisely 2^(GD - LD) pointers pointing to it.
+IncrGlobalDepth应该负责扩张directoty page。
+而DecrGlobalDepth则不需要，因为外部通过Size获取大小，并且只会访问size以内的桶，所以界限外的桶被忽略。
+
+header中默认最大深度误以为始终为2了
 
 测试结束时调用析构函数时显式对0x30调用了UnLatch
 解决：发现是ReadPageGuard和WritePageGuard的Drop函数没有检查page_是否为空
