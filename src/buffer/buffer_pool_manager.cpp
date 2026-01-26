@@ -54,6 +54,7 @@ auto BufferPoolManager::NewPage(page_id_t *page_id) -> Page * {
   // 从freelist获取 和 驱逐都尝试失败
   if (frame_id == -1) {
     latch_.unlock();
+    *page_id = INVALID_PAGE_ID;
     return nullptr;
   }
 
@@ -259,13 +260,17 @@ auto BufferPoolManager::FetchPageBasic(page_id_t page_id) -> BasicPageGuard {
 
 auto BufferPoolManager::FetchPageRead(page_id_t page_id) -> ReadPageGuard {
   auto page = FetchPage(page_id);
-  page->RLatch();
+  if(page){
+    page->RLatch();
+  }
   return ReadPageGuard(this, page);
 }
 
 auto BufferPoolManager::FetchPageWrite(page_id_t page_id) -> WritePageGuard {
   auto page = FetchPage(page_id);
-  page->WLatch();
+  if(page){
+    page->WLatch();
+  }
   return WritePageGuard(this, page);
 }
 

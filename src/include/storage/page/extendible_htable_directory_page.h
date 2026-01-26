@@ -190,6 +190,9 @@ class ExtendibleHTableDirectoryPage {
    */
   void PrintDirectory() const;
 
+ public:
+  auto HashToPageId(uint32_t hash) const -> page_id_t;
+
  private:
   // 目录允许的最大深度
   uint32_t max_depth_;

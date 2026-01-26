@@ -41,7 +41,14 @@ DiskExtendibleHashTable<K, V, KC>::DiskExtendibleHashTable(const std::string &na
       header_max_depth_(header_max_depth),
       directory_max_depth_(directory_max_depth),
       bucket_max_size_(bucket_max_size) {
-  throw NotImplementedException("DiskExtendibleHashTable is not implemented");
+  page_id_t page_id;
+  auto guard = bpm_->NewPageGuarded(&page_id);
+  // 我们只需要持久化page_id，并不需要始终让header_page存在于缓冲池中
+  header_page_id_ = page_id;
+
+  auto header_page = guard.AsMut<ExtendibleHTableHeaderPage>();
+
+  header_page->Init();
 }
 
 /*****************************************************************************
@@ -50,6 +57,40 @@ DiskExtendibleHashTable<K, V, KC>::DiskExtendibleHashTable(const std::string &na
 template <typename K, typename V, typename KC>
 auto DiskExtendibleHashTable<K, V, KC>::GetValue(const K &key, std::vector<V> *result, Transaction *transaction) const
     -> bool {
+  auto guard = bpm_->FetchPageRead(header_page_id_);
+  auto header_page = guard.template As<ExtendibleHTableHeaderPage>();
+  if(!header){
+    return false;
+  }
+
+  // 根据hash值，先得到index，再通过index在数组中查询页号
+  auto hash = Hash(key);
+  auto direc_page_id = header_page->HashToPageId(hash);
+  if(direc_page_id == INVALID_PAGE_ID){
+    return false;
+  }
+
+  auto direc_guard = bpm_->FetchPageRead(direc_page_id);
+  auto direc_page = direc_guard.template As<ExtendibleHTableDirectoryPage>();
+  if(!direc_page){
+    return false;
+  }
+
+  // 根据hash值，先得到index，再通过index在数组中查询页号
+  auto bucket_page_id = direc_page->HashToPageId(hash);
+
+  auto bucket_guard = bpm_->FetchPageRead(bucket_page_id);
+  auto bucket_page = bucket_guard.template As<ExtendibleHTableBucketPage<K, V, KC>>();
+  if(!bucket_page){
+    return false;
+  }
+
+  V value;
+  if (bucket_page->Lookup(key, value, cmp_)) {
+    result->push_back(value);
+    return true;
+  }
+
   return false;
 }
 
@@ -59,13 +100,57 @@ auto DiskExtendibleHashTable<K, V, KC>::GetValue(const K &key, std::vector<V> *r
 
 template <typename K, typename V, typename KC>
 auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Transaction *transaction) -> bool {
-  return false;
+  auto hash = Hash(key);
+
+  auto guard = bpm_->FetchPageWrite(header_page_id_);
+  auto header_page = guard.template AsMut<ExtendibleHTableHeaderPage>();
+  if(!header_page){
+    return false;
+  }
+  auto direc_idx = header_page->HashToDirectoryIndex(hash);
+  auto direc_page_id = header_page->HashToPageId(hash);
+  // 如果对应的目录尚未被初始化
+  if(direc_page_id == INVALID_PAGE_ID) {
+    return InsertToNewDirectory(header_page, direc_idx, hash, key, value);
+  }
+
+  auto direc_guard = bpm_->FetchPageWrite(direc_page_id);
+  auto direc_page = direc_guard.template AsMut<ExtendibleHTableDirectoryPage>();
+  if(!direc_page){
+    return false;
+  }
+  auto bucket_idx = direc_page->HashToBucketIndex(hash);
+  auto bucket_page_id = direc_page->HashToPageId(hash);
+
+  if(bucket_page_id == INVALID_PAGE_ID) {
+    return InsertToNewBucket(direc_page, bucket_idx, key, value);
+  }
+
+  auto bucket_guard = bpm_->FetchPageWrite(bucket_page_id);
+  auto bucket_page = bucket_guard.template AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
+  if(!bucket_page){
+    return false;
+  }
+  return bucket_page->Insert(key, value, cmp_);
 }
 
 template <typename K, typename V, typename KC>
 auto DiskExtendibleHashTable<K, V, KC>::InsertToNewDirectory(ExtendibleHTableHeaderPage *header, uint32_t directory_idx,
                                                              uint32_t hash, const K &key, const V &value) -> bool {
-  return false;
+  page_id_t direc_page_id;
+  auto b_direc_guard = bpm_->NewPageGuarded(&direc_page);
+  if(direc_page_id == INVALID_PAGE_ID) {
+    return false;
+  }
+  auto direc_guard = b_direc_guard.UpgradeWrite();
+  auto direc_page = direc_guard.template AsMut<ExtendibleHTableDirectoryPage>();
+  header->SetDirectoryPageId(directory_idx,direc_page_id);
+
+  // 成功获取direc_guard和direc_page和direc_page_id
+  direc_page->Init();
+
+  auto bucket_idx = direc_page->HashToBucketIndex(hash);
+  return InsertToNewBucket(direc_page, bucket_idx, key, value);
 }
 
 template <typename K, typename V, typename KC>

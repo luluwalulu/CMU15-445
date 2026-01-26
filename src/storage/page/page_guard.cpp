@@ -87,6 +87,7 @@ auto BasicPageGuard::UpgradeRead() -> ReadPageGuard {
   // 同时也不要给旧的BasicPageGuard调用Unpin的机会
   // 需要表现出当前BasicPageGuard资源已经被移空
   ReadPageGuard rg(bpm_, page_);
+  page_->RLatch();
   bpm_ = nullptr;
   page_ = nullptr;
   return rg;
@@ -94,6 +95,7 @@ auto BasicPageGuard::UpgradeRead() -> ReadPageGuard {
 
 auto BasicPageGuard::UpgradeWrite() -> WritePageGuard {
   WritePageGuard wg(bpm_, page_);
+  page_->WLatch();
   bpm_ = nullptr;
   page_ = nullptr;
   return wg;
