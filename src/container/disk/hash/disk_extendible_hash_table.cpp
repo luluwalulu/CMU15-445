@@ -59,7 +59,7 @@ auto DiskExtendibleHashTable<K, V, KC>::GetValue(const K &key, std::vector<V> *r
     -> bool {
   auto guard = bpm_->FetchPageRead(header_page_id_);
   auto header_page = guard.template As<ExtendibleHTableHeaderPage>();
-  if(!header){
+  if(!header_page){
     return false;
   }
 
@@ -138,7 +138,7 @@ template <typename K, typename V, typename KC>
 auto DiskExtendibleHashTable<K, V, KC>::InsertToNewDirectory(ExtendibleHTableHeaderPage *header, uint32_t directory_idx,
                                                              uint32_t hash, const K &key, const V &value) -> bool {
   page_id_t direc_page_id;
-  auto b_direc_guard = bpm_->NewPageGuarded(&direc_page);
+  auto b_direc_guard = bpm_->NewPageGuarded(&direc_page_id);
   if(direc_page_id == INVALID_PAGE_ID) {
     return false;
   }
@@ -156,7 +156,17 @@ auto DiskExtendibleHashTable<K, V, KC>::InsertToNewDirectory(ExtendibleHTableHea
 template <typename K, typename V, typename KC>
 auto DiskExtendibleHashTable<K, V, KC>::InsertToNewBucket(ExtendibleHTableDirectoryPage *directory, uint32_t bucket_idx,
                                                           const K &key, const V &value) -> bool {
-  return false;
+  page_id_t bucket_page_id;
+  auto b_bucket_guard = bpm_->NewPageGuarded(&bucket_page_id);
+  if(bucket_page_id == INVALID_PAGE_ID) {
+    return false;
+  }
+  auto bucket_guard = b_bucket_guard.UpgradeWrite();
+  auto bucket_page = bucket_guard.template AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
+  directory->SetBucketPageId(bucket_idx,bucket_page_id);
+
+  // 成功获取bucket_guard和bucket_page和bucket_page_id
+  return bucket_page->Insert(key, value, cmp_);
 }
 
 template <typename K, typename V, typename KC>
