@@ -133,7 +133,7 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
   }
 
   // 这里插入失败说明是对应的桶已满，应该进行分裂
-  if(!bucket_page->Insert(key, value, cmp_)){
+  if(!bucket_page->IsFull()){
     auto old_lodep = direc_page->GetLocalDepth(bucket_idx);
     auto old_glodep = direc_page->GetGlobalDepth();
     if(old_lodep == old_glodep) {
@@ -172,9 +172,11 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
     }
 
     UpdateDirectoryMapping(direc_page,bucket_idx,new_bucket_page_id,local_depth+1,new_mask);
+
+    return true;
   }
 
-  return true;
+  return bucket_page->Insert(key ,value, cmp_);
 }
 
 template <typename K, typename V, typename KC>
@@ -263,7 +265,46 @@ template <typename K, typename V, typename KC>
 auto DiskExtendibleHashTable<K, V, KC>::Remove(const K &key, Transaction *transaction) -> bool {
   // 删除时只需要直接将当前空桶指向它的分裂桶即可
   // 即使分裂桶为空，只需要循环处理就行了
-  return false;
+  auto hash = Hash(key);
+
+  auto guard = bpm_->FetchPageWrite(header_page_id_);
+  auto header_page = guard.template AsMut<ExtendibleHTableHeaderPage>();
+  if(!header_page){
+    return false;
+  }
+  auto direc_idx = header_page->HashToDirectoryIndex(hash);
+  auto direc_page_id = header_page->HashToPageId(hash);
+  // 如果对应的目录尚未被初始化
+  if(direc_page_id == INVALID_PAGE_ID) {
+    return false;
+  }
+
+  auto direc_guard = bpm_->FetchPageWrite(direc_page_id);
+  auto direc_page = direc_guard.template AsMut<ExtendibleHTableDirectoryPage>();
+  if(!direc_page){
+    return false;
+  }
+  auto bucket_idx = direc_page->HashToBucketIndex(hash);
+  auto bucket_page_id = direc_page->HashToPageId(hash);
+  // 如果对应的桶尚未被初始化
+  if(bucket_page_id == INVALID_PAGE_ID) {
+    return false;
+  }
+
+  auto bucket_guard = bpm_->FetchPageWrite(bucket_page_id);
+  auto bucket_page = bucket_guard.template AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
+  if(!bucket_page){
+    return false;
+  }
+
+  // 桶内没有key对应的条目
+  if(!bucket_page->Remove(key,cmp_)) {
+    return false;
+  }
+
+  if(bucket_page->IsEmpty()){
+
+  }
 }
 
 template class DiskExtendibleHashTable<int, int, IntComparator>;
