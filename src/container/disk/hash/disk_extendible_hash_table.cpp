@@ -272,7 +272,6 @@ auto DiskExtendibleHashTable<K, V, KC>::Remove(const K &key, Transaction *transa
   if(!header_page){
     return false;
   }
-  auto direc_idx = header_page->HashToDirectoryIndex(hash);
   auto direc_page_id = header_page->HashToPageId(hash);
   // 如果对应的目录尚未被初始化
   if(direc_page_id == INVALID_PAGE_ID) {
@@ -302,9 +301,30 @@ auto DiskExtendibleHashTable<K, V, KC>::Remove(const K &key, Transaction *transa
     return false;
   }
 
-  if(bucket_page->IsEmpty()){
+  while(bucket_page->IsEmpty()){
+    auto split_index = direc_page->GetSplitImageIndex(bucket_idx);
+    auto new_local_depth = direc_page->GetLocalDepth(bucket_idx) - 1;
+    auto new_mask = ((1<<new_local_depth)-1);
+    UpdateDirectoryMapping(direc_page, split_index, direc_page->GetBucketPageId(split_index), new_local_depth, new_mask);
 
+    // 彻底删除旧的桶页
+    bucket_guard.Drop();
+    bpm_->DeletePage(bucket_page_id);
+
+    // 获取新页
+    bucket_idx = split_index;
+    bucket_guard = bpm_->FetchPageWrite(bucket_idx);
+    bucket_page = bucket_guard.template AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
+    if(!bucket_page) {
+      return false;
+    }
   }
+
+  if(direc_page->CanShrink()) {
+    direc_page->DecrGlobalDepth();
+  }
+
+  return true;
 }
 
 template class DiskExtendibleHashTable<int, int, IntComparator>;
