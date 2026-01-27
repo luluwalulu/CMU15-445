@@ -57,6 +57,7 @@ DiskExtendibleHashTable<K, V, KC>::DiskExtendibleHashTable(const std::string &na
 template <typename K, typename V, typename KC>
 auto DiskExtendibleHashTable<K, V, KC>::GetValue(const K &key, std::vector<V> *result, Transaction *transaction) const
     -> bool {
+  result->clear();
   auto guard = bpm_->FetchPageRead(header_page_id_);
   auto header_page = guard.template As<ExtendibleHTableHeaderPage>();
   if(!header_page){
@@ -133,7 +134,7 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
   }
 
   // 这里插入失败说明是对应的桶已满，应该进行分裂
-  if(!bucket_page->IsFull()){
+  if(bucket_page->IsFull()){
     auto old_lodep = direc_page->GetLocalDepth(bucket_idx);
     auto old_glodep = direc_page->GetGlobalDepth();
     if(old_lodep == old_glodep) {
@@ -145,6 +146,7 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
     }
     
     // 增加全局深度后归一到所有桶局部深度小于全局深度，且一个桶已满需要分裂的情况
+    bucket_idx = direc_page->HashToBucketIndex(hash);
     page_id_t new_bucket_page_id;
     auto b_new_bucket_guard = bpm_->NewPageGuarded(&new_bucket_page_id);
     if(new_bucket_page_id == INVALID_PAGE_ID) {
@@ -159,17 +161,24 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
 
     auto new_tidx = bucket_idx & new_mask;
     
-    for(size_t i = 0; i < bucket_page->Size(); i++) {
+    auto size = bucket_page->Size();
+    for(size_t i = 0; i < size; i++) {
       auto key = bucket_page->KeyAt(i);
       auto value = bucket_page->ValueAt(i);
       auto hash = Hash(key);
       // 应该放入新桶
       if((hash & new_mask) == new_tidx) {
+        if(!bucket_page->Remove(key, cmp_)) {
+          std::cout<<"Insert fail"<<std::endl;
+        }
         if(!new_bucket_page->Insert(key, value, cmp_)) {
           std::cout<<"Insert fail"<<std::endl;
         }
+        std::cout<<"key="<<key<<",value="<<value<<"键值对被插入新桶中"<<std::endl;
       }
     }
+
+    new_bucket_page->Insert(key, value, cmp_);
 
     UpdateDirectoryMapping(direc_page,bucket_idx,new_bucket_page_id,local_depth+1,new_mask);
 

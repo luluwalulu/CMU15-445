@@ -1,9 +1,18 @@
 当前bug：
-
+桶满时插入逻辑疑似有误
+修改了多处bug，bucket_idx在可能更新全局深度后更新，for循环判断条件以循环前获取的size为准
+插入时只往新桶插，忘了在旧桶删。忘记了插入本来应该插入的键值对。
+修复后，第一个简单测试通过。
+但是，没有处理连续分裂。
 
 
 已解决bug：
+test1中res的size期望值为1，但是实际上没有获取任何值
+修复：GetValue期望行为是会将result每次清空，增加该修改后bug仍然没有被修复。
+发现另一处bug在于Insert中的Isfull判断条件写成了!Isfull。
+
 HashToDirectoryIndex中，32位无符号的hash向右移32位得到结果是未定义
+解决：在header的max_depth_等于0时直接返回0
 
 未能解决Verify: (2) Each bucket has precisely 2^(GD - LD) pointers pointing to it.
 IncrGlobalDepth应该负责扩张directoty page。
