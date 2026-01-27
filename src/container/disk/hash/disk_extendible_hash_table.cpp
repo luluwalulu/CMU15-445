@@ -48,7 +48,7 @@ DiskExtendibleHashTable<K, V, KC>::DiskExtendibleHashTable(const std::string &na
 
   auto header_page = guard.AsMut<ExtendibleHTableHeaderPage>();
 
-  header_page->Init();
+  header_page->Init(header_max_depth);
 }
 
 /*****************************************************************************
@@ -121,7 +121,7 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
   }
   auto bucket_idx = direc_page->HashToBucketIndex(hash);
   auto bucket_page_id = direc_page->HashToPageId(hash);
-
+  // 如果对应的桶尚未被初始化
   if(bucket_page_id == INVALID_PAGE_ID) {
     return InsertToNewBucket(direc_page, bucket_idx, key, value);
   }
@@ -131,7 +131,50 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
   if(!bucket_page){
     return false;
   }
-  return bucket_page->Insert(key, value, cmp_);
+
+  // 这里插入失败说明是对应的桶已满，应该进行分裂
+  if(!bucket_page->Insert(key, value, cmp_)){
+    auto old_lodep = direc_page->GetLocalDepth(bucket_idx);
+    auto old_glodep = direc_page->GetGlobalDepth();
+    if(old_lodep == old_glodep) {
+      // 需要扩大directory
+      if(old_glodep == direc_page->GetMaxDepth()) {
+        return false;
+      }
+      direc_page->IncrGlobalDepth();
+    }
+    
+    // 增加全局深度后归一到所有桶局部深度小于全局深度，且一个桶已满需要分裂的情况
+    page_id_t new_bucket_page_id;
+    auto b_new_bucket_guard = bpm_->NewPageGuarded(&new_bucket_page_id);
+    if(new_bucket_page_id == INVALID_PAGE_ID) {
+      return false;
+    }
+    auto new_bucket_guard = b_new_bucket_guard.UpgradeWrite();
+    auto new_bucket_page = new_bucket_guard.template AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
+    new_bucket_page->Init(bucket_max_size_);
+
+    auto local_depth = direc_page->GetLocalDepth(bucket_idx);
+    auto old_mask = (1<<(local_depth)-1);
+    auto new_mask = (1<<(local_depth+1)-1);
+
+    auto new_tidx = bucket_idx & new_mask;
+    auto old_tidx = bucket_idx & old_mask;
+    
+    for(size_t i = 0; i < bucket_page->Size()) {
+      auto key = bucket_page->KeyAt(i);
+      auto value = bucket_page->ValueAt(i);
+      auto hash = Hash(key);
+      // 应该放入新桶
+      if(hash & new_mask == new_tidx) {
+        if(!new_bucket_page->Insert(key, value, cmp_)) {
+          std::cout<<"Insert fail"<<std::endl;
+        }
+      }
+    }
+
+    UpdateDirectoryMapping(direc_page,bucket_idx,new_bucket_page_id,local_depth+1,new_mask);
+  }
 }
 
 template <typename K, typename V, typename KC>
@@ -147,7 +190,7 @@ auto DiskExtendibleHashTable<K, V, KC>::InsertToNewDirectory(ExtendibleHTableHea
   header->SetDirectoryPageId(directory_idx,direc_page_id);
 
   // 成功获取direc_guard和direc_page和direc_page_id
-  direc_page->Init();
+  direc_page->Init(directory_max_depth_);
 
   auto bucket_idx = direc_page->HashToBucketIndex(hash);
   return InsertToNewBucket(direc_page, bucket_idx, key, value);
@@ -165,6 +208,8 @@ auto DiskExtendibleHashTable<K, V, KC>::InsertToNewBucket(ExtendibleHTableDirect
   auto bucket_page = bucket_guard.template AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
   directory->SetBucketPageId(bucket_idx,bucket_page_id);
 
+  bucket_page->Init(bucket_max_size_);
+
   // 成功获取bucket_guard和bucket_page和bucket_page_id
   return bucket_page->Insert(key, value, cmp_);
 }
@@ -173,7 +218,42 @@ template <typename K, typename V, typename KC>
 void DiskExtendibleHashTable<K, V, KC>::UpdateDirectoryMapping(ExtendibleHTableDirectoryPage *directory,
                                                                uint32_t new_bucket_idx, page_id_t new_bucket_page_id,
                                                                uint32_t new_local_depth, uint32_t local_depth_mask) {
-  throw NotImplementedException("DiskExtendibleHashTable is not implemented");
+  // 选出一个将要被修改过的槽位作为代表，其他槽位参照它决定自己是否需要修改
+  // 如果之前和它指向相同的桶，那么需要决定仍然指向自己之前的桶还是指向被修改槽位所指向的新桶
+
+  // 例如以一个满桶作为参照
+  // 如果之前和它指向相同的桶，而现在仍应和它指向相同的桶，则修改为指向相同桶
+  // 如果之前和它指向相同的桶，而现在不应和它指向相同的桶，则只修改局部深度++
+
+  // 以一个空桶为例
+  // 如果之前和它指向相同的桶，则现在一定仍应和它指向相同的桶，相当于始终为上面的第二种情况，只修改局部深度--
+
+  // 判断是否应指向相同的桶，看hash或idx & 局部深度（idx同样是hash的后几位，但是是全局深度位，覆盖局部深度）
+  
+  // new_bucket_idx:是被修改的槽位
+  // new_bucket_page_id:是被修改槽位指向的新桶
+  // new_local_depth:是被修改槽位指向新桶的局部深度
+  // local_depth_mask:是new_local_depth对应的掩码
+  auto old_local_depth = directory->GetLocalDepth(new_bucket_idx);
+  auto old_local_depth_mask = (1<<(old_local_depth)-1);
+  
+  auto change = new_local_depth - old_local_depth;
+
+  auto new_tidx = new_bucket_idx & local_depth_mask;
+  auto old_tidx = new_bucket_idx & old_local_depth_mask;
+
+  for(size_t idx = 0; idx < directory->Size(); idx++) {
+    auto local_depth = directory->GetLocalDepth(idx);
+    auto i_mask = (1<<(local_depth)-1);
+
+    // 如果指向相同的旧桶，且仍应指向相同的新桶
+    if (old_tidx == idx & i_mask && new_tidx == idx & local_depth_mask) {
+      directory->SetLocalDepth(new_local_depth);
+      directory->SetBucketPageId(new_bucket_page_id);
+    } else if (old_tidx == idx & i_mask) {
+      directory->SetLocalDepth(idx,local_depth+change);
+    }
+  }                                                              
 }
 
 /*****************************************************************************
@@ -181,6 +261,8 @@ void DiskExtendibleHashTable<K, V, KC>::UpdateDirectoryMapping(ExtendibleHTableD
  *****************************************************************************/
 template <typename K, typename V, typename KC>
 auto DiskExtendibleHashTable<K, V, KC>::Remove(const K &key, Transaction *transaction) -> bool {
+  // 删除时只需要直接将当前空桶指向它的分裂桶即可
+  // 即使分裂桶为空，只需要循环处理就行了
   return false;
 }
 
