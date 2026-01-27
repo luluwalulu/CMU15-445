@@ -138,7 +138,7 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
     auto old_glodep = direc_page->GetGlobalDepth();
     if(old_lodep == old_glodep) {
       // 需要扩大directory
-      if(old_glodep == direc_page->GetMaxDepth()) {
+      if(old_glodep == directory_max_depth_) {
         return false;
       }
       direc_page->IncrGlobalDepth();
@@ -155,18 +155,16 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
     new_bucket_page->Init(bucket_max_size_);
 
     auto local_depth = direc_page->GetLocalDepth(bucket_idx);
-    auto old_mask = (1<<(local_depth)-1);
-    auto new_mask = (1<<(local_depth+1)-1);
+    auto new_mask = ((1<<(local_depth+1))-1);
 
     auto new_tidx = bucket_idx & new_mask;
-    auto old_tidx = bucket_idx & old_mask;
     
-    for(size_t i = 0; i < bucket_page->Size()) {
+    for(size_t i = 0; i < bucket_page->Size(); i++) {
       auto key = bucket_page->KeyAt(i);
       auto value = bucket_page->ValueAt(i);
       auto hash = Hash(key);
       // 应该放入新桶
-      if(hash & new_mask == new_tidx) {
+      if((hash & new_mask) == new_tidx) {
         if(!new_bucket_page->Insert(key, value, cmp_)) {
           std::cout<<"Insert fail"<<std::endl;
         }
@@ -175,6 +173,8 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
 
     UpdateDirectoryMapping(direc_page,bucket_idx,new_bucket_page_id,local_depth+1,new_mask);
   }
+
+  return true;
 }
 
 template <typename K, typename V, typename KC>
@@ -235,7 +235,7 @@ void DiskExtendibleHashTable<K, V, KC>::UpdateDirectoryMapping(ExtendibleHTableD
   // new_local_depth:是被修改槽位指向新桶的局部深度
   // local_depth_mask:是new_local_depth对应的掩码
   auto old_local_depth = directory->GetLocalDepth(new_bucket_idx);
-  auto old_local_depth_mask = (1<<(old_local_depth)-1);
+  auto old_local_depth_mask = ((1<<old_local_depth)-1);
   
   auto change = new_local_depth - old_local_depth;
 
@@ -244,13 +244,13 @@ void DiskExtendibleHashTable<K, V, KC>::UpdateDirectoryMapping(ExtendibleHTableD
 
   for(size_t idx = 0; idx < directory->Size(); idx++) {
     auto local_depth = directory->GetLocalDepth(idx);
-    auto i_mask = (1<<(local_depth)-1);
+    auto i_mask = ((1<<local_depth)-1);
 
     // 如果指向相同的旧桶，且仍应指向相同的新桶
-    if (old_tidx == idx & i_mask && new_tidx == idx & local_depth_mask) {
-      directory->SetLocalDepth(new_local_depth);
-      directory->SetBucketPageId(new_bucket_page_id);
-    } else if (old_tidx == idx & i_mask) {
+    if ((old_tidx == (idx & i_mask)) && (new_tidx == (idx & local_depth_mask))) {
+      directory->SetLocalDepth(idx, new_local_depth);
+      directory->SetBucketPageId(idx, new_bucket_page_id);
+    } else if (old_tidx == (idx & i_mask)) {
       directory->SetLocalDepth(idx,local_depth+change);
     }
   }                                                              
