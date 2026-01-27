@@ -3,6 +3,8 @@
 
 
 已解决bug：
+HashToDirectoryIndex中，32位无符号的hash向右移32位得到结果是未定义
+
 未能解决Verify: (2) Each bucket has precisely 2^(GD - LD) pointers pointing to it.
 IncrGlobalDepth应该负责扩张directoty page。
 而DecrGlobalDepth则不需要，因为外部通过Size获取大小，并且只会访问size以内的桶，所以界限外的桶被忽略。
