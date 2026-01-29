@@ -176,7 +176,6 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
         if(!new_bucket_page->Insert(key, value, cmp_)) {
           std::cout<<"Insert fail"<<std::endl;
         }
-        std::cout<<"key="<<key<<",value="<<value<<"键值对被插入新桶中"<<std::endl;
       }
     }
 
@@ -186,8 +185,7 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
     bucket_page = new_bucket_page;
   }
 
-  bucket_page->Insert(key, value, cmp_);
-  return true;
+  return bucket_page->Insert(key, value, cmp_);
 }
 
 template <typename K, typename V, typename KC>
@@ -319,10 +317,12 @@ auto DiskExtendibleHashTable<K, V, KC>::Remove(const K &key, Transaction *transa
     auto new_local_depth = direc_page->GetLocalDepth(bucket_idx) - 1;
     auto new_mask = ((1<<new_local_depth)-1);
 
+    UpdateDirectoryMapping(direc_page, bucket_idx, direc_page->GetBucketPageId(split_index), new_local_depth, new_mask);
+
     // 彻底删除旧的桶页
     bucket_guard.Drop();
     bpm_->DeletePage(bucket_page_id);
-    UpdateDirectoryMapping(direc_page, bucket_idx, direc_page->GetBucketPageId(split_index), new_local_depth, new_mask);
+   
 
     // 获取新页
     bucket_idx = split_index;

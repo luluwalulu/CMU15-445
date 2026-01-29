@@ -1,12 +1,18 @@
 当前bug：
+对于前三个简单测试，有时能通过，有时会出现Segmentation Fault(Core dumped)。
+对于后面添加的测试，同样有一定问题。
+最新修复：
+1.remove中，先调用updatedirecotorymapping修改映射关系，然后再彻底删除空桶
+2.insert中，最后返回insert，而之前没有考虑到插入相同键时的情况
+
+
+已解决bug：
 remove测试中会获取已经被完全释放并删除的空桶，疑似updatedirectorymapping逻辑有误
 发现是remove中调用updatedirectorymapping的逻辑有误，传入参数应该是bucket_idx而非split_idx。
 因为我的updatedirectorymapping的函数逻辑是给出变化桶的旧的true_idx和变化后的true_idx。
 然后遍历所有桶看有哪些之前指向相同桶的，现在是否仍应指向相同桶。
 修改后在i=4时仍然有误，发现当全局深度为0，且唯一桶都为空时，remove函数应该停止合并。
 
-
-已解决bug：
 remove测试失败
 发现一处错误，fetchpage时误用bucket_idx，而非bucket_page_id。解决后仍然有误
 
