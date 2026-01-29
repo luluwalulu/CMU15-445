@@ -1,12 +1,22 @@
 当前bug：
+remove测试中会获取已经被完全释放并删除的空桶，疑似updatedirectorymapping逻辑有误
+发现是remove中调用updatedirectorymapping的逻辑有误，传入参数应该是bucket_idx而非split_idx。
+因为我的updatedirectorymapping的函数逻辑是给出变化桶的旧的true_idx和变化后的true_idx。
+然后遍历所有桶看有哪些之前指向相同桶的，现在是否仍应指向相同桶。
+修改后在i=4时仍然有误，发现当全局深度为0，且唯一桶都为空时，remove函数应该停止合并。
+
+
+已解决bug：
+remove测试失败
+发现一处错误，fetchpage时误用bucket_idx，而非bucket_page_id。解决后仍然有误
+
 桶满时插入逻辑疑似有误
 修改了多处bug，bucket_idx在可能更新全局深度后更新，for循环判断条件以循环前获取的size为准
 插入时只往新桶插，忘了在旧桶删。忘记了插入本来应该插入的键值对。
 修复后，第一个简单测试通过。
 但是，没有处理连续分裂。
+连续分裂逻辑添加后简单插入测试通过
 
-
-已解决bug：
 test1中res的size期望值为1，但是实际上没有获取任何值
 修复：GetValue期望行为是会将result每次清空，增加该修改后bug仍然没有被修复。
 发现另一处bug在于Insert中的Isfull判断条件写成了!Isfull。
