@@ -260,7 +260,7 @@ auto BufferPoolManager::FetchPageBasic(page_id_t page_id) -> BasicPageGuard {
 
 auto BufferPoolManager::FetchPageRead(page_id_t page_id) -> ReadPageGuard {
   auto page = FetchPage(page_id);
-  if(page){
+  if (page) {
     page->RLatch();
   }
   return ReadPageGuard(this, page);
@@ -268,7 +268,7 @@ auto BufferPoolManager::FetchPageRead(page_id_t page_id) -> ReadPageGuard {
 
 auto BufferPoolManager::FetchPageWrite(page_id_t page_id) -> WritePageGuard {
   auto page = FetchPage(page_id);
-  if(page){
+  if (page) {
     page->WLatch();
   }
   return WritePageGuard(this, page);

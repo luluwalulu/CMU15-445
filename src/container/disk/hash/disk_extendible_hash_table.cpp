@@ -60,20 +60,22 @@ auto DiskExtendibleHashTable<K, V, KC>::GetValue(const K &key, std::vector<V> *r
   result->clear();
   auto guard = bpm_->FetchPageRead(header_page_id_);
   auto header_page = guard.template As<ExtendibleHTableHeaderPage>();
-  if(!header_page){
+  if (!header_page) {
     return false;
   }
 
   // 根据hash值，先得到index，再通过index在数组中查询页号
   auto hash = Hash(key);
   auto direc_page_id = header_page->HashToPageId(hash);
-  if(direc_page_id == INVALID_PAGE_ID){
+  if (direc_page_id == INVALID_PAGE_ID) {
     return false;
   }
 
   auto direc_guard = bpm_->FetchPageRead(direc_page_id);
+  // 获取读锁之后释放上一层
+  guard.Drop();
   auto direc_page = direc_guard.template As<ExtendibleHTableDirectoryPage>();
-  if(!direc_page){
+  if (!direc_page) {
     return false;
   }
 
@@ -81,8 +83,10 @@ auto DiskExtendibleHashTable<K, V, KC>::GetValue(const K &key, std::vector<V> *r
   auto bucket_page_id = direc_page->HashToPageId(hash);
 
   auto bucket_guard = bpm_->FetchPageRead(bucket_page_id);
+  // 获取读锁之后释放目录层
+  direc_guard.Drop();
   auto bucket_page = bucket_guard.template As<ExtendibleHTableBucketPage<K, V, KC>>();
-  if(!bucket_page){
+  if (!bucket_page) {
     return false;
   }
 
@@ -105,82 +109,84 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
 
   auto guard = bpm_->FetchPageWrite(header_page_id_);
   auto header_page = guard.template AsMut<ExtendibleHTableHeaderPage>();
-  if(!header_page){
+  if (!header_page) {
     return false;
   }
   auto direc_idx = header_page->HashToDirectoryIndex(hash);
   auto direc_page_id = header_page->HashToPageId(hash);
   // 如果对应的目录尚未被初始化
-  if(direc_page_id == INVALID_PAGE_ID) {
+  if (direc_page_id == INVALID_PAGE_ID) {
     return InsertToNewDirectory(header_page, direc_idx, hash, key, value);
   }
 
   auto direc_guard = bpm_->FetchPageWrite(direc_page_id);
+  // 获取direc_guard之后马上可以释放guard
+  guard.Drop();
   auto direc_page = direc_guard.template AsMut<ExtendibleHTableDirectoryPage>();
-  if(!direc_page){
+  if (!direc_page) {
     return false;
   }
   auto bucket_idx = direc_page->HashToBucketIndex(hash);
   auto bucket_page_id = direc_page->HashToPageId(hash);
   // 如果对应的桶尚未被初始化
-  if(bucket_page_id == INVALID_PAGE_ID) {
+  if (bucket_page_id == INVALID_PAGE_ID) {
     return InsertToNewBucket(direc_page, bucket_idx, key, value);
   }
 
   auto bucket_guard = bpm_->FetchPageWrite(bucket_page_id);
-  auto bucket_page = bucket_guard.template AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
-  if(!bucket_page){
+  auto bucket_page = bucket_guard.template AsMut<ExtendibleHTableBucketPage<K, V, KC>>();
+  if (!bucket_page) {
     return false;
   }
 
-
-  while(bucket_page->IsFull()){
+  while (bucket_page->IsFull()) {
     auto old_lodep = direc_page->GetLocalDepth(bucket_idx);
     auto old_glodep = direc_page->GetGlobalDepth();
-    if(old_lodep == old_glodep) {
+    if (old_lodep == old_glodep) {
       // 需要扩大directory
-      if(old_glodep == directory_max_depth_) {
+      if (old_glodep == directory_max_depth_) {
         return false;
       }
       direc_page->IncrGlobalDepth();
     }
-    
+
     // 增加全局深度后归一到所有桶局部深度小于全局深度，且一个桶已满需要分裂的情况
 
     // 获取一个新的桶页，并将旧桶中的数据分到这两个桶中
     bucket_idx = direc_page->HashToBucketIndex(hash);
     page_id_t new_bucket_page_id;
     auto b_new_bucket_guard = bpm_->NewPageGuarded(&new_bucket_page_id);
-    if(new_bucket_page_id == INVALID_PAGE_ID) {
+    if (new_bucket_page_id == INVALID_PAGE_ID) {
       return false;
     }
     auto new_bucket_guard = b_new_bucket_guard.UpgradeWrite();
-    auto new_bucket_page = new_bucket_guard.template AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
+    auto new_bucket_page = new_bucket_guard.template AsMut<ExtendibleHTableBucketPage<K, V, KC>>();
     new_bucket_page->Init(bucket_max_size_);
 
     auto local_depth = direc_page->GetLocalDepth(bucket_idx);
-    auto new_mask = ((1<<(local_depth+1))-1);
+    auto new_mask = ((1 << (local_depth + 1)) - 1);
 
     auto new_tidx = bucket_idx & new_mask;
-    
+
     auto size = bucket_page->Size();
-    for(size_t i = 0; i < size; i++) {
+    for (size_t i = 0; i < size; i++) {
       auto key = bucket_page->KeyAt(i);
       auto value = bucket_page->ValueAt(i);
       auto hash = Hash(key);
       // 应该放入新桶
-      if((hash & new_mask) == new_tidx) {
+      if ((hash & new_mask) == new_tidx) {
         bucket_page->Remove(key, cmp_);
         new_bucket_page->Insert(key, value, cmp_);
       }
     }
 
-    UpdateDirectoryMapping(direc_page,bucket_idx,new_bucket_page_id,local_depth+1,new_mask);
+    UpdateDirectoryMapping(direc_page, bucket_idx, new_bucket_page_id, local_depth + 1, new_mask);
 
     bucket_guard = std::move(new_bucket_guard);
     bucket_page = new_bucket_page;
   }
 
+  direc_guard.Drop();
   return bucket_page->Insert(key, value, cmp_);
 }
 
@@ -189,12 +195,12 @@ auto DiskExtendibleHashTable<K, V, KC>::InsertToNewDirectory(ExtendibleHTableHea
                                                              uint32_t hash, const K &key, const V &value) -> bool {
   page_id_t direc_page_id;
   auto b_direc_guard = bpm_->NewPageGuarded(&direc_page_id);
-  if(direc_page_id == INVALID_PAGE_ID) {
+  if (direc_page_id == INVALID_PAGE_ID) {
     return false;
   }
   auto direc_guard = b_direc_guard.UpgradeWrite();
   auto direc_page = direc_guard.template AsMut<ExtendibleHTableDirectoryPage>();
-  header->SetDirectoryPageId(directory_idx,direc_page_id);
+  header->SetDirectoryPageId(directory_idx, direc_page_id);
 
   // 成功获取direc_guard和direc_page和direc_page_id
   direc_page->Init(directory_max_depth_);
@@ -208,12 +214,12 @@ auto DiskExtendibleHashTable<K, V, KC>::InsertToNewBucket(ExtendibleHTableDirect
                                                           const K &key, const V &value) -> bool {
   page_id_t bucket_page_id;
   auto b_bucket_guard = bpm_->NewPageGuarded(&bucket_page_id);
-  if(bucket_page_id == INVALID_PAGE_ID) {
+  if (bucket_page_id == INVALID_PAGE_ID) {
     return false;
   }
   auto bucket_guard = b_bucket_guard.UpgradeWrite();
-  auto bucket_page = bucket_guard.template AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
-  directory->SetBucketPageId(bucket_idx,bucket_page_id);
+  auto bucket_page = bucket_guard.template AsMut<ExtendibleHTableBucketPage<K, V, KC>>();
+  directory->SetBucketPageId(bucket_idx, bucket_page_id);
 
   bucket_page->Init(bucket_max_size_);
 
@@ -236,22 +242,22 @@ void DiskExtendibleHashTable<K, V, KC>::UpdateDirectoryMapping(ExtendibleHTableD
   // 如果之前和它指向相同的桶，则现在一定仍应和它指向相同的桶，相当于始终为上面的第二种情况，只修改局部深度--
 
   // 判断是否应指向相同的桶，看hash或idx & 局部深度（idx同样是hash的后几位，但是是全局深度位，覆盖局部深度）
-  
+
   // new_bucket_idx:是被修改的槽位
   // new_bucket_page_id:是被修改槽位指向的新桶
   // new_local_depth:是被修改槽位指向新桶的局部深度
   // local_depth_mask:是new_local_depth对应的掩码
   auto old_local_depth = directory->GetLocalDepth(new_bucket_idx);
-  uint32_t old_local_depth_mask = ((1<<old_local_depth)-1);
-  
+  uint32_t old_local_depth_mask = ((1 << old_local_depth) - 1);
+
   int change = new_local_depth - old_local_depth;
 
   auto new_tidx = new_bucket_idx & local_depth_mask;
   auto old_tidx = new_bucket_idx & old_local_depth_mask;
 
-  for(size_t idx = 0; idx < directory->Size(); idx++) {
+  for (size_t idx = 0; idx < directory->Size(); idx++) {
     auto local_depth = directory->GetLocalDepth(idx);
-    auto i_mask = ((1<<local_depth)-1);
+    auto i_mask = ((1 << local_depth) - 1);
 
     // 如果指向相同的旧桶，且仍应指向相同的新桶
     // BUG????
@@ -259,9 +265,9 @@ void DiskExtendibleHashTable<K, V, KC>::UpdateDirectoryMapping(ExtendibleHTableD
       directory->SetLocalDepth(idx, new_local_depth);
       directory->SetBucketPageId(idx, new_bucket_page_id);
     } else if (old_tidx == (idx & i_mask)) {
-      directory->SetLocalDepth(idx,local_depth+change);
+      directory->SetLocalDepth(idx, local_depth + change);
     }
-  }                                                              
+  }
 }
 
 /*****************************************************************************
@@ -275,62 +281,62 @@ auto DiskExtendibleHashTable<K, V, KC>::Remove(const K &key, Transaction *transa
 
   auto guard = bpm_->FetchPageWrite(header_page_id_);
   auto header_page = guard.template AsMut<ExtendibleHTableHeaderPage>();
-  if(!header_page){
+  if (!header_page) {
     return false;
   }
   auto direc_page_id = header_page->HashToPageId(hash);
   // 如果对应的目录尚未被初始化
-  if(direc_page_id == INVALID_PAGE_ID) {
+  if (direc_page_id == INVALID_PAGE_ID) {
     return false;
   }
 
   auto direc_guard = bpm_->FetchPageWrite(direc_page_id);
+  guard.Drop();
   auto direc_page = direc_guard.template AsMut<ExtendibleHTableDirectoryPage>();
-  if(!direc_page){
+  if (!direc_page) {
     return false;
   }
   auto bucket_idx = direc_page->HashToBucketIndex(hash);
   auto bucket_page_id = direc_page->HashToPageId(hash);
   // 如果对应的桶尚未被初始化
-  if(bucket_page_id == INVALID_PAGE_ID) {
+  if (bucket_page_id == INVALID_PAGE_ID) {
     return false;
   }
 
   auto bucket_guard = bpm_->FetchPageWrite(bucket_page_id);
-  auto bucket_page = bucket_guard.template AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
-  if(!bucket_page){
+  auto bucket_page = bucket_guard.template AsMut<ExtendibleHTableBucketPage<K, V, KC>>();
+  if (!bucket_page) {
     return false;
   }
 
   // 桶内没有key对应的条目
-  if(!bucket_page->Remove(key,cmp_)) {
+  if (!bucket_page->Remove(key, cmp_)) {
     return false;
   }
 
   // 当发现全局深度为0且唯一桶为空时，应该立刻终止
-  while(bucket_page->IsEmpty() && !direc_page->GetGlobalDepth()){
+  while (bucket_page->IsEmpty() && !direc_page->GetGlobalDepth()) {
     auto split_index = direc_page->GetSplitImageIndex(bucket_idx);
     auto new_local_depth = direc_page->GetLocalDepth(bucket_idx) - 1;
-    auto new_mask = ((1<<new_local_depth)-1);
+    auto new_mask = ((1 << new_local_depth) - 1);
 
     UpdateDirectoryMapping(direc_page, bucket_idx, direc_page->GetBucketPageId(split_index), new_local_depth, new_mask);
 
     // 彻底删除旧的桶页
     bucket_guard.Drop();
     bpm_->DeletePage(bucket_page_id);
-   
 
     // 获取新页
     bucket_idx = split_index;
     bucket_page_id = direc_page->GetBucketPageId(bucket_idx);
     bucket_guard = std::move(bpm_->FetchPageWrite(bucket_page_id));
-    bucket_page = bucket_guard.template AsMut<ExtendibleHTableBucketPage<K,V,KC>>();
-    if(!bucket_page) {
+    bucket_page = bucket_guard.template AsMut<ExtendibleHTableBucketPage<K, V, KC>>();
+    if (!bucket_page) {
       return false;
     }
   }
 
-  if(direc_page->CanShrink()) {
+  if (direc_page->CanShrink()) {
     direc_page->DecrGlobalDepth();
   }
 
