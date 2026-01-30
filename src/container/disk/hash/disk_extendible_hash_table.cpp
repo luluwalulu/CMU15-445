@@ -133,7 +133,7 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
     return false;
   }
 
-  // 这里插入失败说明是对应的桶已满，应该进行分裂
+
   while(bucket_page->IsFull()){
     auto old_lodep = direc_page->GetLocalDepth(bucket_idx);
     auto old_glodep = direc_page->GetGlobalDepth();
@@ -170,12 +170,8 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
       auto hash = Hash(key);
       // 应该放入新桶
       if((hash & new_mask) == new_tidx) {
-        if(!bucket_page->Remove(key, cmp_)) {
-          std::cout<<"Insert fail"<<std::endl;
-        }
-        if(!new_bucket_page->Insert(key, value, cmp_)) {
-          std::cout<<"Insert fail"<<std::endl;
-        }
+        bucket_page->Remove(key, cmp_);
+        new_bucket_page->Insert(key, value, cmp_);
       }
     }
 

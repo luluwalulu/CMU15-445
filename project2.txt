@@ -1,12 +1,19 @@
 当前bug：
+
+
+
+已解决bug：
 对于前三个简单测试，有时能通过，有时会出现Segmentation Fault(Core dumped)。
 对于后面添加的测试，同样有一定问题。
 最新修复：
 1.remove中，先调用updatedirecotorymapping修改映射关系，然后再彻底删除空桶
 2.insert中，最后返回insert，而之前没有考虑到插入相同键时的情况
+此时Segmentation Fault仍为概率性出现
+同时，对于SmallBufferPoolTest（缓冲池大小为3）当i=10时会因为无法驱逐页面而不能获取页面
+有可能就是这个导致了Segmentation Fault
+3.发现SmallBufferPoolTest挂掉的原因，当缓冲池大小为3时，在insert函数中，头页仍未被销毁，目录页仍未被销毁，同时分裂的话需要两个桶页，总共需要四个页，所以是测试样例本身有一定问题
+4.rm -rf之后Segmentation Fault消失了
 
-
-已解决bug：
 remove测试中会获取已经被完全释放并删除的空桶，疑似updatedirectorymapping逻辑有误
 发现是remove中调用updatedirectorymapping的逻辑有误，传入参数应该是bucket_idx而非split_idx。
 因为我的updatedirectorymapping的函数逻辑是给出变化桶的旧的true_idx和变化后的true_idx。
