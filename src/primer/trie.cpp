@@ -85,9 +85,7 @@ auto Trie::RemoveReversal(std::shared_ptr<TrieNode> p, size_t index, std::string
   // 如果p的孩子中存在序号为index的对应节点
   if (p->children_.find(key[index]) != p->children_.end()) {
     next = std::shared_ptr<TrieNode>(p->children_[key[index]]->Clone());
-  }
-  // 如果不存在的话，那么删除操作失败，无需创建新树了
-  else {
+  } else {
     return nullptr;
   }
 

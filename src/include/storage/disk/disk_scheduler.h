@@ -70,6 +70,7 @@ class DiskScheduler {
    *
    * The background thread needs to process requests while the DiskScheduler exists, i.e., this function should not
    * return until ~DiskScheduler() is called. At that point you need to make sure that the function does return.
+   * 该线程负责从request_queue_中不断取值然后分发给Disk Manager
    */
   void StartWorkerThread();
 
@@ -85,7 +86,7 @@ class DiskScheduler {
 
  private:
   /** Pointer to the disk manager. */
-  DiskManager *disk_manager_ __attribute__((__unused__));
+  DiskManager *disk_manager_;
   /** A shared queue to concurrently schedule and process requests. When the DiskScheduler's destructor is called,
    * `std::nullopt` is put into the queue to signal to the background thread to stop execution. */
   Channel<std::optional<DiskRequest>> request_queue_;
