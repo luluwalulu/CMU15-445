@@ -1,0 +1,50 @@
+当前bug：
+
+
+
+已解决bug：
+对于前三个简单测试，有时能通过，有时会出现Segmentation Fault(Core dumped)。
+对于后面添加的测试，同样有一定问题。
+最新修复：
+1.remove中，先调用updatedirecotorymapping修改映射关系，然后再彻底删除空桶
+2.insert中，最后返回insert，而之前没有考虑到插入相同键时的情况
+此时Segmentation Fault仍为概率性出现
+同时，对于SmallBufferPoolTest（缓冲池大小为3）当i=10时会因为无法驱逐页面而不能获取页面
+有可能就是这个导致了Segmentation Fault
+3.发现SmallBufferPoolTest挂掉的原因，当缓冲池大小为3时，在insert函数中，头页仍未被销毁，目录页仍未被销毁，同时分裂的话需要两个桶页，总共需要四个页，所以是测试样例本身有一定问题
+4.rm -rf之后Segmentation Fault消失了
+
+remove测试中会获取已经被完全释放并删除的空桶，疑似updatedirectorymapping逻辑有误
+发现是remove中调用updatedirectorymapping的逻辑有误，传入参数应该是bucket_idx而非split_idx。
+因为我的updatedirectorymapping的函数逻辑是给出变化桶的旧的true_idx和变化后的true_idx。
+然后遍历所有桶看有哪些之前指向相同桶的，现在是否仍应指向相同桶。
+修改后在i=4时仍然有误，发现当全局深度为0，且唯一桶都为空时，remove函数应该停止合并。
+
+remove测试失败
+发现一处错误，fetchpage时误用bucket_idx，而非bucket_page_id。解决后仍然有误
+
+桶满时插入逻辑疑似有误
+修改了多处bug，bucket_idx在可能更新全局深度后更新，for循环判断条件以循环前获取的size为准
+插入时只往新桶插，忘了在旧桶删。忘记了插入本来应该插入的键值对。
+修复后，第一个简单测试通过。
+但是，没有处理连续分裂。
+连续分裂逻辑添加后简单插入测试通过
+
+test1中res的size期望值为1，但是实际上没有获取任何值
+修复：GetValue期望行为是会将result每次清空，增加该修改后bug仍然没有被修复。
+发现另一处bug在于Insert中的Isfull判断条件写成了!Isfull。
+
+HashToDirectoryIndex中，32位无符号的hash向右移32位得到结果是未定义
+解决：在header的max_depth_等于0时直接返回0
+
+未能解决Verify: (2) Each bucket has precisely 2^(GD - LD) pointers pointing to it.
+IncrGlobalDepth应该负责扩张directoty page。
+而DecrGlobalDepth则不需要，因为外部通过Size获取大小，并且只会访问size以内的桶，所以界限外的桶被忽略。
+
+header中默认最大深度误以为始终为2了
+
+测试结束时调用析构函数时显式对0x30调用了UnLatch
+解决：发现是ReadPageGuard和WritePageGuard的Drop函数没有检查page_是否为空
+
+buffer pool中的unpin函数，对于脏页标志，如果已经设置了脏页标志，
+Unpin函数无权取消它。Unpin函数只能置位脏页标志而不能取消它。

@@ -62,14 +62,19 @@ void ExtendibleHTableDirectoryPage::VerifyIntegrity() const {
 
   // Verify: (3) The LD is the same at each index with the same bucket_page_id
   for (uint32_t curr_idx = 0; curr_idx < Size(); curr_idx++) {
+    // 遍历目录页中bucket_page_ids，curr_page_id为当前桶的页号
     page_id_t curr_page_id = bucket_page_ids_[curr_idx];
+    // curr_ld为当前桶的深度
     uint32_t curr_ld = local_depths_[curr_idx];
 
     // Verify: (1) All LD <= GD.
     BUSTUB_ASSERT(curr_ld <= global_depth_, "there exists a local depth greater than the global depth");
 
+    // 由于用桶页号来标识桶，一个桶是唯一的
+    // 每有一个槽位指向当前桶，则对应数量++
     ++page_id_to_count[curr_page_id];
 
+    // 如果map中已经有当前桶的页号了，且当前桶深度和map中当前桶的深度不相等，则报错
     if (page_id_to_ld.count(curr_page_id) > 0 && curr_ld != page_id_to_ld[curr_page_id]) {
       uint32_t old_ld = page_id_to_ld[curr_page_id];
       LOG_WARN("Verify Integrity: curr_local_depth: %u, old_local_depth %u, for page_id: %u", curr_ld, old_ld,

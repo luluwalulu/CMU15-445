@@ -37,6 +37,7 @@ static constexpr uint64_t HTABLE_DIRECTORY_PAGE_METADATA_SIZE = sizeof(uint32_t)
  * storage of the other member variables.
  */
 static constexpr uint64_t HTABLE_DIRECTORY_MAX_DEPTH = 9;
+// 512
 static constexpr uint64_t HTABLE_DIRECTORY_ARRAY_SIZE = 1 << HTABLE_DIRECTORY_MAX_DEPTH;
 
 /**
@@ -189,10 +190,17 @@ class ExtendibleHTableDirectoryPage {
    */
   void PrintDirectory() const;
 
+ public:
+  auto HashToPageId(uint32_t hash) const -> page_id_t;
+
  private:
+  // 目录允许的最大深度
   uint32_t max_depth_;
+  // 当前目录的全局深度
   uint32_t global_depth_;
+  // 每个桶的局部深度数组
   uint8_t local_depths_[HTABLE_DIRECTORY_ARRAY_SIZE];
+  // 桶页ID数组
   page_id_t bucket_page_ids_[HTABLE_DIRECTORY_ARRAY_SIZE];
 };
 
