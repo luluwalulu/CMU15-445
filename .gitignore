@@ -244,3 +244,10 @@ docs/dev
 
 # Submission zip files
 *.zip
+
+
+
+build_support/cpplint.py
+build_support/run_clang_format.py
+build_support/run_clang_tidy_extra.py
+build_support/run_clang_tidy.py
