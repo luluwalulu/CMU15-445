@@ -43,6 +43,8 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       continue;
     }
     *tuple = pii.second;
+    *rid = itr_->GetRID();
+    tuple->SetRid(*rid);
     return true;  
   }
 
