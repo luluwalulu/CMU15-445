@@ -24,7 +24,7 @@ void InsertExecutor::Init() {
   child_executor_->Init();
 }
 
-auto InsertExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
+auto InsertExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   if(is_finish_) {
     return false;
   }

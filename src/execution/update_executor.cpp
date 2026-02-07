@@ -32,7 +32,7 @@ void UpdateExecutor::Init() {
 // Update算子并非在原地内存上更新值，而是删除要被修改的那一行，然后插入被修改后的那一行
 // Update算子必须避免的一种情况是一边取，一边做“删除插入”，因为Update算子会插入新的元组，导致会需要从下一层获取新的元组，导致死循环
 // 所以需要先获取完所有元组，才一次性处理
-auto UpdateExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
+auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   if(is_finish_) {
     return false;
   }
