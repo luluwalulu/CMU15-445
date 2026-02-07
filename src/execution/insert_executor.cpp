@@ -25,6 +25,10 @@ void InsertExecutor::Init() {
 }
 
 auto InsertExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
+  if(is_finish_) {
+    return false;
+  }
+
   Tuple child_tuple{};
 
   auto catalog = exec_ctx_->GetCatalog();
@@ -74,6 +78,7 @@ auto InsertExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
   *tuple = Tuple(values, &GetOutputSchema());
   rid->Set(INVALID_PAGE_ID, 0);
 
+  is_finish_ = true;
   return true;
 }
 

@@ -33,6 +33,10 @@ void UpdateExecutor::Init() {
 // Update算子必须避免的一种情况是一边取，一边做“删除插入”，因为Update算子会插入新的元组，导致会需要从下一层获取新的元组，导致死循环
 // 所以需要先获取完所有元组，才一次性处理
 auto UpdateExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
+  if(is_finish_) {
+    return false;
+  }
+
   std::vector<Tuple*> tuples;
   Tuple child_tuple{};
 
@@ -89,6 +93,7 @@ auto UpdateExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
   *tuple = Tuple(return_values, &GetOutputSchema());
   rid->Set(INVALID_PAGE_ID, 0);
 
+  is_finish_ = true;
   return true;
 }
 
