@@ -20,17 +20,15 @@ DeleteExecutor::DeleteExecutor(ExecutorContext *exec_ctx, const DeletePlanNode *
                                std::unique_ptr<AbstractExecutor> &&child_executor)
     : AbstractExecutor(exec_ctx), plan_(plan), child_executor_(std::move(child_executor)) {}
 
-void DeleteExecutor::Init() {
-  child_executor_->Init();
-}
+void DeleteExecutor::Init() { child_executor_->Init(); }
 
 auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
-  if(is_finished) {
+  if (is_finished) {
     return false;
   }
 
   Tuple child_tuple{};
-  TupleMeta delete_meta{0,true};
+  TupleMeta delete_meta{0, true};
   int delete_sum = 0;
 
   auto catalog = exec_ctx_->GetCatalog();
@@ -40,11 +38,11 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
 
   auto index_info = catalog->GetTableIndexes(table_info->name_);
 
-  const auto& schema = table_info->schema_;
+  const auto &schema = table_info->schema_;
 
-  while(true) {
+  while (true) {
     const auto status = child_executor_->Next(&child_tuple, rid);
-    if(!status) {
+    if (!status) {
       break;
     }
 
@@ -53,10 +51,10 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
     table_heap->UpdateTupleMeta(delete_meta, r);
 
     delete_sum++;
-    for(auto *info:index_info) {
-      auto* index = info->index_.get();
+    for (auto *info : index_info) {
+      auto *index = info->index_.get();
       auto key_schema = index->GetKeySchema();
-      const auto& key_attrs =index->GetKeyAttrs();
+      const auto &key_attrs = index->GetKeyAttrs();
 
       auto key = child_tuple.KeyFromTuple(schema, *key_schema, key_attrs);
       info->index_->DeleteEntry(key, r, exec_ctx_->GetTransaction());

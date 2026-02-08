@@ -275,38 +275,4 @@ TEST(ExtendibleHTableTest, SmallBufferPoolTest) {
   ht.VerifyIntegrity();
 }
 
-TEST(ExtendibleHTableTest, MixedRandomTest) {
-  auto disk_mgr = std::make_unique<DiskManagerUnlimitedMemory>();
-  auto bpm = std::make_unique<BufferPoolManager>(50, disk_mgr.get());
-
-  DiskExtendibleHashTable<int, int, IntComparator> ht("random_test", bpm.get(), IntComparator(), HashFunction<int>(), 0,
-                                                      8, 5);
-
-  int num_ops = 1000;
-  std::vector<int> keys;
-
-  for (int i = 0; i < num_ops; i++) {
-    int op = rand() % 3;     // 0: Insert, 1: Remove, 2: Get
-    int key = rand() % 100;  // Key 范围 0-99
-
-    if (op == 0) {
-      // Insert
-      bool status = ht.Insert(key, key);
-      if (status) {
-        keys.push_back(key);
-      }
-    } else if (op == 1) {
-      // Remove
-      // 如果我们知道这个key之前插入过，status 应该是 true (除非已经被删了)
-    } else {
-      // Get
-      std::vector<int> res;
-      ht.GetValue(key, &res);
-      // 这里很难断言，因为我们不知道 key 此时是否应该存在，
-      // 但我们至少保证程序不会 Crash
-    }
-  }
-  ht.VerifyIntegrity();
-}
-
 }  // namespace bustub

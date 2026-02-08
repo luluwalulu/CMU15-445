@@ -20,17 +20,15 @@ void IndexScanExecutor::Init() {
   Tuple dummy_tuple;
   Value v;
 
-  auto catalog =exec_ctx_->GetCatalog();
-  auto table = catalog->GetTable(plan_->table_oid_);
+  auto catalog = exec_ctx_->GetCatalog();
   auto index = catalog->GetIndex(plan_->index_oid_);
   auto htable = dynamic_cast<HashTableIndexForTwoIntegerColumn *>(index->index_.get());
-  const auto& schema = table->schema_;
-  const auto& key_schema = index->key_schema_;
+  const auto &key_schema = index->key_schema_;
 
-  if(plan_->pred_key_) {
+  if (plan_->pred_key_) {
     v = plan_->pred_key_->Evaluate(&dummy_tuple, Schema{{}});
   } else {
-    const auto& expr = plan_->filter_predicate_;
+    const auto &expr = plan_->filter_predicate_;
     v = expr->Evaluate(&dummy_tuple, Schema{{}});
   }
 
@@ -45,9 +43,9 @@ auto IndexScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   auto table_info = catalog->GetTable(plan_->table_oid_);
   auto table_heap = table_info->table_.get();
 
-  while(cursor_<rids_.size()) {
+  while (cursor_ < rids_.size()) {
     auto p = table_heap->GetTuple(rids_[cursor_]);
-    if(p.first.is_deleted_) {
+    if (p.first.is_deleted_) {
       cursor_++;
       continue;
     }

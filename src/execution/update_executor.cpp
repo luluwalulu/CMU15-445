@@ -33,17 +33,17 @@ void UpdateExecutor::Init() {
 // Update算子必须避免的一种情况是一边取，一边做“删除插入”，因为Update算子会插入新的元组，导致会需要从下一层获取新的元组，导致死循环
 // 所以需要先获取完所有元组，才一次性处理
 auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
-  if(is_finish_) {
+  if (is_finish_) {
     return false;
   }
 
-  std::vector<Tuple*> tuples;
+  std::vector<Tuple *> tuples;
   Tuple child_tuple{};
 
-  while(true){
+  while (true) {
     const auto status = child_executor_->Next(&child_tuple, rid);
     tuples.push_back(&child_tuple);
-    if(!status) {
+    if (!status) {
       break;
     }
   }
@@ -51,37 +51,36 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   auto catalog = exec_ctx_->GetCatalog();
   auto table_heap = table_info_->table_.get();
   auto index_infos = catalog->GetTableIndexes(table_info_->name_);
-  const auto& schema = table_info_->schema_;
+  const auto &schema = table_info_->schema_;
 
-  TupleMeta new_meta{0,false};
-  TupleMeta delete_meta{0,true};
+  TupleMeta new_meta{0, false};
+  TupleMeta delete_meta{0, true};
 
   int update_sum = 0;
 
   // 对于每个元组，将其设为deleted。然后计算得到新的元组，最后将新的元组插入，然后更新索引
-  for(auto* t:tuples) {
+  for (auto *t : tuples) {
     auto r = t->GetRid();
-    auto old_meta = table_heap->GetTupleMeta(r);
-    table_heap->UpdateTupleMeta(delete_meta,r);
+    table_heap->UpdateTupleMeta(delete_meta, r);
 
     std::vector<Value> values;
-    for(auto expr:plan_->target_expressions_) {
+    for (auto expr : plan_->target_expressions_) {
       values.push_back(expr->Evaluate(t, schema));
     }
     Tuple new_tuple(values, &schema);
 
     auto option_rid = table_heap->InsertTuple(new_meta, new_tuple);
-    if(option_rid == std::nullopt) {
+    if (option_rid == std::nullopt) {
       continue;
     }
 
     // 插入成功
     new_tuple.SetRid(*option_rid);
     update_sum++;
-    for(auto *info:index_infos){
-      auto* index = info->index_.get();
+    for (auto *info : index_infos) {
+      auto *index = info->index_.get();
       auto key_schema = index->GetKeySchema();
-      const auto& key_attrs =index->GetKeyAttrs();
+      const auto &key_attrs = index->GetKeyAttrs();
 
       auto key = child_tuple.KeyFromTuple(schema, *key_schema, key_attrs);
       info->index_->InsertEntry(key, *option_rid, exec_ctx_->GetTransaction());
