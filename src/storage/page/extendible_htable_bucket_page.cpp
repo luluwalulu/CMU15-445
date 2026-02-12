@@ -55,15 +55,17 @@ auto ExtendibleHTableBucketPage<K, V, KC>::Insert(const K &key, const V &value, 
 template <typename K, typename V, typename KC>
 auto ExtendibleHTableBucketPage<K, V, KC>::Remove(const K &key, const KC &cmp) -> bool {
   for (size_t i = 0; i < size_; i++) {
-    if (!cmp(key, array_[i].first)) {
-      size_--;
-      for (size_t j = i; j < size_; j++) {
-        array_[j] = array_[j + 1];
+    if (cmp(key, array_[i].first) == 0) {  // 建议显式写 == 0 以增加可读性
+      // 【优化】直接用最后一个元素覆盖当前删除位置
+      // 只有当删除的不是最后一个元素时才需要搬运
+      if (i != size_ - 1) {
+        array_[i] = array_[size_ - 1];
       }
+
+      size_--;
       return true;
     }
   }
-
   return false;
 }
 

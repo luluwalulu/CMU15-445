@@ -168,15 +168,20 @@ auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Tra
 
     auto new_tidx = bucket_idx & new_mask;
 
-    auto size = bucket_page->Size();
-    for (size_t i = 0; i < size; i++) {
-      auto key = bucket_page->KeyAt(i);
-      auto value = bucket_page->ValueAt(i);
-      auto hash = Hash(key);
-      // 应该放入新桶
-      if ((hash & new_mask) == new_tidx) {
-        bucket_page->Remove(key, cmp_);
-        new_bucket_page->Insert(key, value, cmp_);
+    std::vector<std::pair<K, V>> entries;
+    for (size_t i = 0; i < bucket_page->Size(); i++) {
+      entries.emplace_back(bucket_page->KeyAt(i), bucket_page->ValueAt(i));
+    }
+    bucket_page->Init(bucket_max_size_);
+    // 重新分配数据到旧桶和新桶
+    for (const auto &entry : entries) {
+      auto target_hash = Hash(entry.first);
+      if ((target_hash & new_mask) == new_tidx) {
+        // 放入新桶
+        new_bucket_page->Insert(entry.first, entry.second, cmp_);
+      } else {
+        // 放回旧桶
+        bucket_page->Insert(entry.first, entry.second, cmp_);
       }
     }
 
@@ -315,28 +320,42 @@ auto DiskExtendibleHashTable<K, V, KC>::Remove(const K &key, Transaction *transa
   }
 
   // 当发现全局深度为0且唯一桶为空时，应该立刻终止
-  while (bucket_page->IsEmpty() && !direc_page->GetGlobalDepth()) {
-    auto split_index = direc_page->GetSplitImageIndex(bucket_idx);
-    auto new_local_depth = direc_page->GetLocalDepth(bucket_idx) - 1;
-    auto new_mask = ((1 << new_local_depth) - 1);
+  while (bucket_page->IsEmpty()) {
+    auto local_depth = direc_page->GetLocalDepth(bucket_idx);
+    if (local_depth == 0) {
+      break;
+    }
 
-    UpdateDirectoryMapping(direc_page, bucket_idx, direc_page->GetBucketPageId(split_index), new_local_depth, new_mask);
+    auto split_index = direc_page->GetSplitImageIndex(bucket_idx);
+    if (direc_page->GetLocalDepth(split_index) != local_depth) {
+      break;
+    }
+
+    auto target_page_id = direc_page->GetBucketPageId(split_index);
 
     // 彻底删除旧的桶页
     bucket_guard.Drop();
     bpm_->DeletePage(bucket_page_id);
 
+    for (uint32_t i = 0; i < direc_page->Size(); i++) {
+      if (direc_page->GetBucketPageId(i) == bucket_page_id || direc_page->GetBucketPageId(i) == target_page_id) {
+        direc_page->SetBucketPageId(i, target_page_id);
+        direc_page->SetLocalDepth(i, local_depth - 1);
+      }
+    }
+
     // 获取新页
     bucket_idx = split_index;
-    bucket_page_id = direc_page->GetBucketPageId(bucket_idx);
-    bucket_guard = std::move(bpm_->FetchPageWrite(bucket_page_id));
+    bucket_page_id = direc_page->GetBucketPageId(split_index);
+
+    bucket_guard = bpm_->FetchPageWrite(bucket_page_id);
     bucket_page = bucket_guard.template AsMut<ExtendibleHTableBucketPage<K, V, KC>>();
     if (!bucket_page) {
       return false;
     }
   }
 
-  if (direc_page->CanShrink()) {
+  while (direc_page->CanShrink()) {
     direc_page->DecrGlobalDepth();
   }
 
