@@ -41,9 +41,18 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       ++*itr_;
       continue;
     }
+    if (plan_->filter_predicate_) {
+      auto v = plan_->filter_predicate_->Evaluate(&pii.second, GetOutputSchema());
+      BUSTUB_ASSERT(!v.IsNull(), "v不能为空");
+      if (!v.GetAs<bool>()) {
+        ++*itr_;
+        continue;
+      }
+    }
     *tuple = pii.second;
     *rid = itr_->GetRID();
     tuple->SetRid(*rid);
+    ++*itr_;
     return true;
   }
 

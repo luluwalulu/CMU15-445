@@ -18,6 +18,7 @@
 #include "execution/executors/abstract_executor.h"
 #include "execution/plans/seq_scan_plan.h"
 #include "storage/table/tuple.h"
+#include "execution/expressions/comparison_expression.h"
 
 namespace bustub {
 

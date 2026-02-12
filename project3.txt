@@ -1,0 +1,32 @@
+当前bug：
+
+
+
+已处理bug:
+index_scan中，调用Evaluate(&dummy_tuple, Schema{{}})显示访问错误地址
+对于filter_predicate_，不应始终当成常量表达式，其有可能为任意一种表达式
+  对于pred_key_，应该是seqscan_as_indexscan中必须进行初始化用于引路的东西
+  执行器计划总，实际上pred_key必要，filter_predicate不必要
+pred_key_进行正确修改后，一个测试挂掉。原因是cursor_在遍历后没有自增
+
+现在问题是结果错误
+发现在seqscan中默认filter_predicate是比较类型的表达式，遂进行修改
+
+
+update更新数目不对
+修改1：发现获取tuples数组时，检查status状态 和 向tuples中添加数据的顺序颠倒
+  应该先确保状态无误再进行获取
+  修改一进行后本应是主键为3和4的元组值为445，现主键为3的元组未变，有两个值为445的主键为4的元组
+修改2：在更新索引时删除了原来的索引
+  修改二进行后bug不变，经过打印发现并非child的问题
+修改3：发现了一个隐蔽的指针错误。使用Tuple*类型的tuples数组来获取。
+
+
+insert插入测试的最后一项出错，当插入where v1 != v1的元组时，本应插入0个元组，但插入10个元组
+可能是由于MergeFilter的作用，本来的filter可能无法发挥作用，同时seq_scan中未考虑这点，导致出错
+移除MergeFilterScan的优化后通过，确悉是这里的问题
+
+seqscan测试崩溃
+通过打印发现，seqscan_executor会在Next函数中陷入死循环
+发现是并非是在Next函数内死循环，而是因为return true的逻辑分支上忘记迭代器++，导致
+重复调用Next。

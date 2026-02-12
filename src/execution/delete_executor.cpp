@@ -55,8 +55,8 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
       auto *index = info->index_.get();
       auto key_schema = index->GetKeySchema();
       const auto &key_attrs = index->GetKeyAttrs();
-
       auto key = child_tuple.KeyFromTuple(schema, *key_schema, key_attrs);
+
       info->index_->DeleteEntry(key, r, exec_ctx_->GetTransaction());
     }
   }

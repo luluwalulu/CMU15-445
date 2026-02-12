@@ -35,7 +35,7 @@ class IndexScanPlanNode : public AbstractPlanNode {
    * @param pred_key The key for point lookup
    */
   IndexScanPlanNode(SchemaRef output, table_oid_t table_oid, index_oid_t index_oid,
-                    AbstractExpressionRef filter_predicate = nullptr, ConstantValueExpression *pred_key = nullptr)
+                    AbstractExpressionRef filter_predicate = nullptr, AbstractExpressionRef pred_key = nullptr)
       : AbstractPlanNode(std::move(output), {}),
         table_oid_(table_oid),
         index_oid_(index_oid),
@@ -65,7 +65,7 @@ class IndexScanPlanNode : public AbstractPlanNode {
    * The constant value key to lookup.
    * For example when dealing "WHERE v = 1" we could store the constant value 1 here
    */
-  const ConstantValueExpression *pred_key_;
+  AbstractExpressionRef pred_key_;
 
   // Add anything you want here for index lookup
 

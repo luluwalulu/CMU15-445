@@ -25,12 +25,7 @@ void IndexScanExecutor::Init() {
   auto htable = dynamic_cast<HashTableIndexForTwoIntegerColumn *>(index->index_.get());
   const auto &key_schema = index->key_schema_;
 
-  if (plan_->pred_key_) {
-    v = plan_->pred_key_->Evaluate(&dummy_tuple, Schema{{}});
-  } else {
-    const auto &expr = plan_->filter_predicate_;
-    v = expr->Evaluate(&dummy_tuple, Schema{{}});
-  }
+  v = plan_->pred_key_->Evaluate(&dummy_tuple, Schema{{}});
 
   values.push_back(v);
   Tuple key(values, &key_schema);
@@ -52,6 +47,7 @@ auto IndexScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
 
     *tuple = p.second;
     *rid = rids_[cursor_];
+    cursor_++;
     return true;
   }
 

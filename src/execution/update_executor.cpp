@@ -37,16 +37,8 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     return false;
   }
 
-  std::vector<Tuple *> tuples;
+  std::vector<Tuple> tuples;
   Tuple child_tuple{};
-
-  while (true) {
-    const auto status = child_executor_->Next(&child_tuple, rid);
-    tuples.push_back(&child_tuple);
-    if (!status) {
-      break;
-    }
-  }
 
   auto catalog = exec_ctx_->GetCatalog();
   auto table_heap = table_info_->table_.get();
@@ -58,20 +50,30 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
 
   int update_sum = 0;
 
+  while (true) {
+    const auto status = child_executor_->Next(&child_tuple, rid);
+    if (!status) {
+      break;
+    }
+
+    tuples.push_back(child_tuple);
+  }
+
   // 对于每个元组，将其设为deleted。然后计算得到新的元组，最后将新的元组插入，然后更新索引
-  for (auto *t : tuples) {
-    auto r = t->GetRid();
+  for (auto t : tuples) {
+    auto r = t.GetRid();
     table_heap->UpdateTupleMeta(delete_meta, r);
 
     std::vector<Value> values;
     for (auto expr : plan_->target_expressions_) {
-      values.push_back(expr->Evaluate(t, schema));
+      auto v = expr->Evaluate(&t, schema);
+      values.push_back(v);
     }
     Tuple new_tuple(values, &schema);
 
     auto option_rid = table_heap->InsertTuple(new_meta, new_tuple);
     if (option_rid == std::nullopt) {
-      continue;
+      throw "update执行器插入失败";
     }
 
     // 插入成功
@@ -81,9 +83,11 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       auto *index = info->index_.get();
       auto key_schema = index->GetKeySchema();
       const auto &key_attrs = index->GetKeyAttrs();
-
-      auto key = child_tuple.KeyFromTuple(schema, *key_schema, key_attrs);
-      info->index_->InsertEntry(key, *option_rid, exec_ctx_->GetTransaction());
+      auto old_key = t.KeyFromTuple(schema, *key_schema, key_attrs);
+      auto new_key = new_tuple.KeyFromTuple(schema, *key_schema, key_attrs);
+      
+      info->index_->DeleteEntry(old_key, r, exec_ctx_->GetTransaction());
+      info->index_->InsertEntry(new_key, *option_rid, exec_ctx_->GetTransaction());
     }
   }
 
