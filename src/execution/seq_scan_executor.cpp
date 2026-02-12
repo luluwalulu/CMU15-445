@@ -18,10 +18,6 @@ SeqScanExecutor::SeqScanExecutor(ExecutorContext *exec_ctx, const SeqScanPlanNod
     : AbstractExecutor(exec_ctx), plan_(plan) {}
 
 void SeqScanExecutor::Init() {
-  // 根据ExecutorContext初始化SeqScanPlanNode
-  // table_oid_t oid = plan_->GetTableOid();
-  // itr_ = exec_ctx_->GetCatalog()->GetTable()
-
   auto catalog = exec_ctx_->GetCatalog();
   table_oid_t oid = plan_->GetTableOid();
   auto table_info = catalog->GetTable(oid);

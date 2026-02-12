@@ -20,8 +20,8 @@ auto Optimizer::OptimizeSeqScanAsIndexScan(const bustub::AbstractPlanNodeRef &pl
 
   if (optimized_plan->GetType() == PlanType::SeqScan) {
     // const auto &seq_scan_plan = dynamic_cast<const SeqScanPlanNode &>(*optimized_plan);
-    auto* seq_scan_plan = dynamic_cast<SeqScanPlanNode *>(optimized_plan.get());
-    if(!seq_scan_plan) {
+    auto *seq_scan_plan = dynamic_cast<SeqScanPlanNode *>(optimized_plan.get());
+    if (!seq_scan_plan) {
       return optimized_plan;
     }
 

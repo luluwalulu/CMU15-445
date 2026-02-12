@@ -18,11 +18,48 @@ namespace bustub {
 
 AggregationExecutor::AggregationExecutor(ExecutorContext *exec_ctx, const AggregationPlanNode *plan,
                                          std::unique_ptr<AbstractExecutor> &&child_executor)
-    : AbstractExecutor(exec_ctx) {}
+    : AbstractExecutor(exec_ctx),
+      plan_(plan),
+      child_executor_(std::move(child_executor)),
+      aht_(plan->GetAggregates(), plan->GetAggregateTypes()),
+      aht_iterator_(aht_.End()) {}
 
-void AggregationExecutor::Init() {}
+// Init函数需要生成哈希表，然后将数据插入到哈希表中
+void AggregationExecutor::Init() {
+  Tuple t{};
+  RID r{};
 
-auto AggregationExecutor::Next(Tuple *tuple, RID *rid) -> bool { return false; }
+  child_executor_->Init();
+
+  while (true) {
+    const auto status = child_executor_->Next(&t, &r);
+    if (!status) {
+      break;
+    }
+
+    // std::cout<<"插入一个元组"<<std::endl;
+    auto key_from_tuple = MakeAggregateKey(&t);
+    auto value_from_tuple = MakeAggregateValue(&t);
+
+    aht_.InsertCombine(key_from_tuple, value_from_tuple);
+  }
+
+  if (aht_.Begin() == aht_.End()) {
+    aht_.InsertInitialCombine();
+  }
+  aht_iterator_ = aht_.Begin();
+}
+
+auto AggregationExecutor::Next(Tuple *tuple, RID *rid) -> bool {
+  if (aht_iterator_ == aht_.End()) {
+    return false;
+  }
+
+  *tuple = {aht_iterator_.Val().aggregates_, &GetOutputSchema()};
+  rid->Set(INVALID_PAGE_ID, 0);
+  ++aht_iterator_;
+  return true;
+}
 
 auto AggregationExecutor::GetChildExecutor() const -> const AbstractExecutor * { return child_executor_.get(); }
 

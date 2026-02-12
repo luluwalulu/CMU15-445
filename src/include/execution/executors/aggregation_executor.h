@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <algorithm>
 
 #include "common/util/hash_util.h"
 #include "container/hash/hash_function.h"
@@ -25,6 +26,7 @@
 #include "execution/plans/aggregation_plan.h"
 #include "storage/table/tuple.h"
 #include "type/value_factory.h"
+
 
 namespace bustub {
 
@@ -72,13 +74,69 @@ class SimpleAggregationHashTable {
    */
   void CombineAggregateValues(AggregateValue *result, const AggregateValue &input) {
     for (uint32_t i = 0; i < agg_exprs_.size(); i++) {
+      // 一个分组中有i个聚合目标，我插入的一个元组需要依次修改这i个聚合目标。第i个聚合目标对应result->aggregates[i]
+      // input是一个元组有关这i个聚合目标的i个有用信息，input.aggregates_[i]对于result->aggregates[i]的修改有着参考作用
+      int old_val = result->aggregates_[i].GetAs<int>();
+      auto new_Value = input.aggregates_[i];
+      int new_val = input.aggregates_[i].GetAs<int>();
+
       switch (agg_types_[i]) {
-        case AggregationType::CountStarAggregate:
-        case AggregationType::CountAggregate:
-        case AggregationType::SumAggregate:
-        case AggregationType::MinAggregate:
-        case AggregationType::MaxAggregate:
+        case AggregationType::CountStarAggregate: {
+          result->aggregates_[i] = ValueFactory::GetIntegerValue(old_val + 1);
           break;
+        }
+        case AggregationType::CountAggregate: {
+          if (new_val == BUSTUB_INT32_NULL) {
+            break;
+          }
+
+          if (old_val == BUSTUB_INT32_NULL) {
+            old_val = 0;
+          }
+          if (!new_Value.IsNull()) {
+            result->aggregates_[i] = ValueFactory::GetIntegerValue(old_val + 1);
+          }
+
+          break;
+        }
+        case AggregationType::SumAggregate: {
+          if (new_val == BUSTUB_INT32_NULL) {
+            break;
+          }
+
+          if (old_val == BUSTUB_INT32_NULL) {
+            old_val = 0;
+          }
+          result->aggregates_[i] = ValueFactory::GetIntegerValue(new_val + old_val);
+
+          break;
+        }
+        case AggregationType::MinAggregate: {
+          if (new_val == BUSTUB_INT32_NULL) {
+            break;
+          }
+
+          if (old_val == BUSTUB_INT32_NULL) {
+            result->aggregates_[i] = ValueFactory::GetIntegerValue(new_val);
+            break;
+          }
+          result->aggregates_[i] = ValueFactory::GetIntegerValue(std::min(new_val, old_val));
+
+          break;
+        }
+        case AggregationType::MaxAggregate: {
+          if (new_val == BUSTUB_INT32_NULL) {
+            break;
+          }
+
+          if (old_val == BUSTUB_INT32_NULL) {
+            result->aggregates_[i] = ValueFactory::GetIntegerValue(new_val);
+            break;
+          }         
+          result->aggregates_[i] = ValueFactory::GetIntegerValue(std::max(new_val, old_val));
+
+          break;
+        }
       }
     }
   }
@@ -90,9 +148,20 @@ class SimpleAggregationHashTable {
    */
   void InsertCombine(const AggregateKey &agg_key, const AggregateValue &agg_val) {
     if (ht_.count(agg_key) == 0) {
+      // 如果对应的key尚不存在，添加新的分组
       ht_.insert({agg_key, GenerateInitialAggregateValue()});
     }
+    // 然后将元组插入到新的分组中
     CombineAggregateValues(&ht_[agg_key], agg_val);
+  }
+
+  void InsertInitialCombine() {
+    if (!ht_.empty()) {
+      throw Exception("哈希表不为空");
+    }
+
+    AggregateKey dummy_key{};
+    ht_.insert({dummy_key, GenerateInitialAggregateValue()});
   }
 
   /**
@@ -203,9 +272,9 @@ class AggregationExecutor : public AbstractExecutor {
   std::unique_ptr<AbstractExecutor> child_executor_;
 
   /** Simple aggregation hash table */
-  // TODO(Student): Uncomment SimpleAggregationHashTable aht_;
+  SimpleAggregationHashTable aht_;
 
   /** Simple aggregation hash table iterator */
-  // TODO(Student): Uncomment SimpleAggregationHashTable::Iterator aht_iterator_;
+  SimpleAggregationHashTable::Iterator aht_iterator_;
 };
 }  // namespace bustub
