@@ -44,7 +44,7 @@ void AggregationExecutor::Init() {
     aht_.InsertCombine(key_from_tuple, value_from_tuple);
   }
 
-  if (aht_.Begin() == aht_.End()) {
+  if (aht_.Begin() == aht_.End() && plan_->GetGroupBys().empty()) {
     aht_.InsertInitialCombine();
   }
   aht_iterator_ = aht_.Begin();
@@ -55,7 +55,13 @@ auto AggregationExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     return false;
   }
 
-  *tuple = {aht_iterator_.Val().aggregates_, &GetOutputSchema()};
+  std::vector<Value> values;
+  if (!plan_->GetGroupBys().empty()) {
+    values.insert(values.end(), aht_iterator_.Key().group_bys_.begin(), aht_iterator_.Key().group_bys_.end());
+  }
+  values.insert(values.end(), aht_iterator_.Val().aggregates_.begin(), aht_iterator_.Val().aggregates_.end());
+
+  *tuple = {values, &GetOutputSchema()};
   rid->Set(INVALID_PAGE_ID, 0);
   ++aht_iterator_;
   return true;

@@ -3,6 +3,10 @@
 
 
 已处理bug:
+bustub::Tuple::Tuple(std::vector<Value>, const bustub::Schema *): Assertion `values.size() == schema->GetColumnCount()' failed.
+已解决，原因是聚合执行器中，进行分组操作时需要将key也添加到输出元组中
+
+
 index_scan中，调用Evaluate(&dummy_tuple, Schema{{}})显示访问错误地址
 对于filter_predicate_，不应始终当成常量表达式，其有可能为任意一种表达式
   对于pred_key_，应该是seqscan_as_indexscan中必须进行初始化用于引路的东西
