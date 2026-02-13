@@ -47,6 +47,7 @@ void NestedLoopJoinExecutor::Init() {
       break;
     }
 
+    // std::cout<<"获取一次left_tuple"<<std::endl;
     std::vector<Value> values;
 
     for (size_t i = 0; i < left_schema.GetColumnCount(); i++) {
@@ -63,6 +64,7 @@ void NestedLoopJoinExecutor::Init() {
         break;
       }
 
+      // std::cout<<"获取一次right_tuple"<<right_tuple.ToString()<<std::endl;
       bool b = plan_->Predicate()->EvaluateJoin(&left_tuple, left_schema, &right_tuple, right_schema).GetAs<bool>();
 
       if (b) {

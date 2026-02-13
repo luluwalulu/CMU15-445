@@ -30,6 +30,7 @@ void AggregationExecutor::Init() {
   RID r{};
 
   child_executor_->Init();
+  aht_.Clear();
 
   while (true) {
     const auto status = child_executor_->Next(&t, &r);

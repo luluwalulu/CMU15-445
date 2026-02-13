@@ -1,8 +1,13 @@
 当前bug：
-LEFT JOIN的逻辑好像有问题
+聚合执行器好像出错
+推测为聚合执行器的Init函数有误，之前设想的情况中聚合执行器只需调用一次Next就再也不会被调用
+但在JOIN执行器这里需要重复初始化right_executor
 
 
 已处理bug:
+LEFT JOIN的逻辑好像有问题
+已修复
+
 bustub::Tuple::Tuple(std::vector<Value>, const bustub::Schema *): Assertion `values.size() == schema->GetColumnCount()' failed.
 已解决，原因是聚合执行器中，进行分组操作时需要将key也添加到输出元组中
 
