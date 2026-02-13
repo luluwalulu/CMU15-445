@@ -12,11 +12,11 @@
 
 #pragma once
 
+#include <algorithm>
 #include <memory>
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <algorithm>
 
 #include "common/util/hash_util.h"
 #include "container/hash/hash_function.h"
@@ -26,7 +26,6 @@
 #include "execution/plans/aggregation_plan.h"
 #include "storage/table/tuple.h"
 #include "type/value_factory.h"
-
 
 namespace bustub {
 
@@ -132,7 +131,7 @@ class SimpleAggregationHashTable {
           if (old_val == BUSTUB_INT32_NULL) {
             result->aggregates_[i] = ValueFactory::GetIntegerValue(new_val);
             break;
-          }         
+          }
           result->aggregates_[i] = ValueFactory::GetIntegerValue(std::max(new_val, old_val));
 
           break;

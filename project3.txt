@@ -1,5 +1,5 @@
 当前bug：
-
+LEFT JOIN的逻辑好像有问题
 
 
 已处理bug:
@@ -12,7 +12,6 @@ index_scan中，调用Evaluate(&dummy_tuple, Schema{{}})显示访问错误地址
   对于pred_key_，应该是seqscan_as_indexscan中必须进行初始化用于引路的东西
   执行器计划总，实际上pred_key必要，filter_predicate不必要
 pred_key_进行正确修改后，一个测试挂掉。原因是cursor_在遍历后没有自增
-
 现在问题是结果错误
 发现在seqscan中默认filter_predicate是比较类型的表达式，遂进行修改
 

@@ -85,7 +85,7 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       const auto &key_attrs = index->GetKeyAttrs();
       auto old_key = t.KeyFromTuple(schema, *key_schema, key_attrs);
       auto new_key = new_tuple.KeyFromTuple(schema, *key_schema, key_attrs);
-      
+
       info->index_->DeleteEntry(old_key, r, exec_ctx_->GetTransaction());
       info->index_->InsertEntry(new_key, *option_rid, exec_ctx_->GetTransaction());
     }
