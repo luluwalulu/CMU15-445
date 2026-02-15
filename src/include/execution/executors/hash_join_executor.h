@@ -55,6 +55,7 @@ class HashJoinExecutor : public AbstractExecutor {
   auto GetOutputSchema() const -> const Schema & override { return plan_->OutputSchema(); };
 
  private:
+  // 获取#0.0，#0.1，#0.3这样的格式
   auto MakeLeftJoinKey(const Tuple *tuple) -> JoinKey {
     std::vector<Value> keys;
     for (const auto &expr : plan_->LeftJoinKeyExpressions()) {
@@ -63,6 +64,7 @@ class HashJoinExecutor : public AbstractExecutor {
     return {keys};
   }
 
+  // 获取#1.0，#1.1，#1.3这样的格式
   auto MakeRightJoinKey(const Tuple *tuple) -> JoinKey {
     std::vector<Value> keys;
     for (const auto &expr : plan_->RightJoinKeyExpressions()) {
