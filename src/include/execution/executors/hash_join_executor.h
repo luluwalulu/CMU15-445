@@ -13,12 +13,15 @@
 #pragma once
 
 #include <memory>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "execution/executor_context.h"
 #include "execution/executors/abstract_executor.h"
 #include "execution/plans/hash_join_plan.h"
 #include "storage/table/tuple.h"
+#include "type/value_factory.h"
 
 namespace bustub {
 
@@ -52,8 +55,35 @@ class HashJoinExecutor : public AbstractExecutor {
   auto GetOutputSchema() const -> const Schema & override { return plan_->OutputSchema(); };
 
  private:
+  auto MakeLeftJoinKey(const Tuple *tuple) -> JoinKey {
+    std::vector<Value> keys;
+    for (const auto &expr : plan_->LeftJoinKeyExpressions()) {
+      keys.emplace_back(expr->Evaluate(tuple, left_executor_->GetOutputSchema()));
+    }
+    return {keys};
+  }
+
+  auto MakeRightJoinKey(const Tuple *tuple) -> JoinKey {
+    std::vector<Value> keys;
+    for (const auto &expr : plan_->RightJoinKeyExpressions()) {
+      keys.emplace_back(expr->Evaluate(tuple, right_executor_->GetOutputSchema()));
+    }
+    return {keys};
+  }
+
+ private:
   /** The HashJoin plan node to be executed. */
   const HashJoinPlanNode *plan_;
+  std::unique_ptr<AbstractExecutor> left_executor_;
+  std::unique_ptr<AbstractExecutor> right_executor_;
+
+  // 哈希表中存储right_tuple
+  std::unordered_map<JoinKey, std::vector<Tuple>> htable_{};
+
+  // 由于一个left_tuple可以和多个right_tuple组合，所以记录left_values
+  std::vector<Value> left_values_{};
+  const std::vector<Tuple> *tuple_vec_{nullptr};
+  size_t cursor_{0};
 };
 
 }  // namespace bustub
