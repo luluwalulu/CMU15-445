@@ -1,11 +1,16 @@
 当前bug：
+unexpected error: SerializeTo not implemented
+还是最终构造Tuple时有问题
+
+
+已处理bug:
 OptimizeSortLimitAsTopN有误，推测为递归相关出错
 原因为没有考虑到节点没有孩子的情况
 修改后出现TopN not found的报错信息
 发现是dynamic_cast使用出错
 
 
-已处理bug:
+
 聚合执行器好像出错
 推测为聚合执行器的Init函数有误，之前设想的情况中聚合执行器只需调用一次Next就再也不会被调用
 但在JOIN执行器这里需要重复初始化right_executor

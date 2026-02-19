@@ -58,7 +58,7 @@ void WindowFunctionExecutor::Init() {
 
   // 二.为每个分区生成初始值
   // aggregate_values数组内存储着聚合值，results[i]中元组对应的聚合值存储在aggregate_values[i]中
-  std::vector<std::vector<Value>> aggregate_values;
+  std::vector<std::vector<Value>> aggregate_values(results.size());
   std::unordered_map<GroupByKey, AggregateValues> htable{};
 
   for (const auto &p : plan_->window_functions_) {
@@ -97,9 +97,17 @@ void WindowFunctionExecutor::Init() {
         for (const auto &expr : partition_bys) {
           keys.emplace_back(expr->Evaluate(&results[i], child_executor_->GetOutputSchema()));
         }
+
         GroupByKey group_by_key{keys};
+
+        if (htable.find(group_by_key) == htable.end()) {
+          throw Exception("group_by_key本应已经插入");
+        }
+
         aggregate_values[i].emplace_back(htable[group_by_key].aggregates_[0]);
       }
+
+      htable.clear();
     } else {
       std::unordered_map<GroupByKey, std::tuple<int, uint32_t, Tuple>> rank_table;
 
@@ -138,7 +146,6 @@ void WindowFunctionExecutor::Init() {
   // 三.遍历完所有窗口函数中，所有results[i]对应元组所需要的聚合信息，都在aggregate_values[i]中
   for (size_t i = 0; i < results.size(); i++) {
     // 将results[i]中信息和aggregate_values[i]中信息整合
-    size_t ori_row = 0;
     size_t aggregate_row = 0;
     size_t row;
     const auto &tuple = results[i];
@@ -148,12 +155,17 @@ void WindowFunctionExecutor::Init() {
     for (size_t j = 0; j < GetOutputSchema().GetColumnCount(); j++) {
       // 说明第j列应该是原来的元组对应的信息
       if (plan_->window_functions_.count(j) == 0) {
-        row = ori_row++;
-        auto value = tuple.GetValue(&child_executor_->GetOutputSchema(), row);
+        // columns[j]记录了对应的列号
+        auto expr = plan_->columns_[j].get();
+        auto column = dynamic_cast<ColumnValueExpression*>(expr);
+        if (column == nullptr) {
+          throw Exception("column == nullptr");
+        }
+        auto value = tuple.GetValue(&child_executor_->GetOutputSchema(), column->GetColIdx());
         values.push_back(value);
       } else {
         row = aggregate_row++;
-        values.push_back(aggregate_values[i][aggregate_row]);
+        values.push_back(aggregate_values[i][row]);
       }
     }
 
