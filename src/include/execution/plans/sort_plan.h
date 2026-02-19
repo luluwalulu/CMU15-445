@@ -59,5 +59,4 @@ class SortPlanNode : public AbstractPlanNode {
  protected:
   auto PlanNodeToString() const -> std::string override;
 };
-
 }  // namespace bustub
