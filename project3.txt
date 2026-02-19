@@ -1,6 +1,8 @@
 当前bug：
-unexpected error: SerializeTo not implemented
-还是最终构造Tuple时有问题
+1.unexpected error: SerializeTo not implemented
+还是最终构造Tuple时有问题，已修复
+2.加入order by后聚合值计算逻辑有所不同，已修复
+3.rank值的构造好像有一定问题，已修复
 
 
 已处理bug:

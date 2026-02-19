@@ -58,19 +58,25 @@ void WindowFunctionExecutor::Init() {
 
   // 二.为每个分区生成初始值
   // aggregate_values数组内存储着聚合值，results[i]中元组对应的聚合值存储在aggregate_values[i]中
-  std::vector<std::vector<Value>> aggregate_values(results.size());
+  std::vector<std::unordered_map<uint32_t, Value>> aggregate_values(results.size());
   std::unordered_map<GroupByKey, AggregateValues> htable{};
+  bool orderby_isempty{true};
 
   for (const auto &p : plan_->window_functions_) {
+    const auto &col_idx = p.first;
     const auto &window_func = p.second;
     const auto &partition_bys = window_func.partition_by_;
     const auto &function = window_func.function_;
     const auto &type = window_func.type_;
     const auto &order_by = window_func.order_by_;
+    if (!order_by.empty()) {
+      orderby_isempty = false;
+    }
 
     if (type != WindowFunctionType::Rank) {
       // 将所有元组插入到htable中
-      for (const auto &tuple : results) {
+      for (size_t i = 0; i < results.size(); i++) {
+        const auto &tuple = results[i];
         std::vector<Value> keys;
         for (const auto &expr : partition_bys) {
           keys.emplace_back(expr->Evaluate(&tuple, child_executor_->GetOutputSchema()));
@@ -89,22 +95,27 @@ void WindowFunctionExecutor::Init() {
         }
 
         CombineAggregateValues(&htable[key], input, htable, type);
-      }
 
-      // 插入完成后，提取聚合函数所得到aggregate_values中
-      for (size_t i = 0; i < results.size(); i++) {
-        std::vector<Value> keys;
-        for (const auto &expr : partition_bys) {
-          keys.emplace_back(expr->Evaluate(&results[i], child_executor_->GetOutputSchema()));
+        if (!orderby_isempty) {
+          aggregate_values[i][col_idx] = htable[key].aggregates_[0];
         }
+      } // 遍历元组
 
-        GroupByKey group_by_key{keys};
+      if (orderby_isempty) {
+        for (size_t i = 0; i < results.size(); i++) {
+          std::vector<Value> keys;
+          for (const auto &expr : partition_bys) {
+            keys.emplace_back(expr->Evaluate(&results[i], child_executor_->GetOutputSchema()));
+          }
 
-        if (htable.find(group_by_key) == htable.end()) {
-          throw Exception("group_by_key本应已经插入");
+          GroupByKey group_by_key{keys};
+
+          if (htable.find(group_by_key) == htable.end()) {
+            throw Exception("group_by_key本应已经插入");
+          }
+
+          aggregate_values[i][col_idx] = (htable[group_by_key].aggregates_[0]);
         }
-
-        aggregate_values[i].emplace_back(htable[group_by_key].aggregates_[0]);
       }
 
       htable.clear();
@@ -130,11 +141,13 @@ void WindowFunctionExecutor::Init() {
         // 如果和前一个元组按照排序的优先级来讲相同
         if (last_rank != -1 && IsTupleEqual(last_tuple, results[i], order_by)) {
           // 得到last_rank
-          aggregate_values[i].emplace_back(ValueFactory::GetIntegerValue(last_rank));
+          auto v = ValueFactory::GetIntegerValue(last_rank);
+          aggregate_values[i][col_idx] = v;
           actual_rank++;
         } else {
           // 得到actual_rank
-          aggregate_values[i].emplace_back(ValueFactory::GetIntegerValue(actual_rank));
+          auto v = ValueFactory::GetIntegerValue(actual_rank);
+          aggregate_values[i][col_idx] = v;
           last_rank = actual_rank;
           actual_rank++;
           last_tuple = results[i];
@@ -146,8 +159,6 @@ void WindowFunctionExecutor::Init() {
   // 三.遍历完所有窗口函数中，所有results[i]对应元组所需要的聚合信息，都在aggregate_values[i]中
   for (size_t i = 0; i < results.size(); i++) {
     // 将results[i]中信息和aggregate_values[i]中信息整合
-    size_t aggregate_row = 0;
-    size_t row;
     const auto &tuple = results[i];
 
     std::vector<Value> values;
@@ -155,17 +166,10 @@ void WindowFunctionExecutor::Init() {
     for (size_t j = 0; j < GetOutputSchema().GetColumnCount(); j++) {
       // 说明第j列应该是原来的元组对应的信息
       if (plan_->window_functions_.count(j) == 0) {
-        // columns[j]记录了对应的列号
         auto expr = plan_->columns_[j].get();
-        auto column = dynamic_cast<ColumnValueExpression*>(expr);
-        if (column == nullptr) {
-          throw Exception("column == nullptr");
-        }
-        auto value = tuple.GetValue(&child_executor_->GetOutputSchema(), column->GetColIdx());
-        values.push_back(value);
+        values.push_back(expr->Evaluate(&tuple, child_executor_->GetOutputSchema()));
       } else {
-        row = aggregate_row++;
-        values.push_back(aggregate_values[i][row]);
+        values.push_back(aggregate_values[i][j]);
       }
     }
 
