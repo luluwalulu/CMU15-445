@@ -85,6 +85,7 @@ class WindowFunctionPlanNode : public AbstractPlanNode {
   BUSTUB_PLAN_NODE_CLONE_WITH_CHILDREN(WindowFunctionPlanNode);
 
   struct WindowFunction {
+    // function_是运算对象
     AbstractExpressionRef function_;
     WindowFunctionType type_;
     std::vector<AbstractExpressionRef> partition_by_;
@@ -94,13 +95,48 @@ class WindowFunctionPlanNode : public AbstractPlanNode {
   /** all columns expressions */
   std::vector<AbstractExpressionRef> columns_;
 
+  // 一个窗口函数对应一个聚合函数
   std::unordered_map<uint32_t, WindowFunction> window_functions_;
 
  protected:
   auto PlanNodeToString() const -> std::string override;
 };
 
+struct GroupByKey {
+  std::vector<Value> group_bys_;
+
+  auto operator==(const GroupByKey &other) const -> bool {
+    for (uint32_t i = 0; i < other.group_bys_.size(); i++) {
+      if (group_bys_[i].CompareEquals(other.group_bys_[i]) != CmpBool::CmpTrue) {
+        return false;
+      }
+    }
+    return true;
+  }
+};
+
+struct AggregateValues {
+  std::vector<Value> aggregates_;
+};
+
 }  // namespace bustub
+
+namespace std {
+
+template <>
+struct hash<bustub::GroupByKey> {
+  auto operator()(const bustub::GroupByKey &agg_key) const -> std::size_t {
+    size_t curr_hash = 0;
+    for (const auto &key : agg_key.group_bys_) {
+      if (!key.IsNull()) {
+        curr_hash = bustub::HashUtil::CombineHashes(curr_hash, bustub::HashUtil::HashValue(&key));
+      }
+    }
+    return curr_hash;
+  }
+};
+
+}  // namespace std
 
 template <>
 struct fmt::formatter<bustub::WindowFunctionPlanNode::WindowFunction> : formatter<std::string> {

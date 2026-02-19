@@ -65,4 +65,38 @@ class TopNPlanNode : public AbstractPlanNode {
   auto PlanNodeToString() const -> std::string override;
 };
 
+struct TopNCompare {
+  const std::vector<std::pair<OrderByType, AbstractExpressionRef>> &order_bys_;
+  const Schema &schema_;
+
+  TopNCompare(const std::vector<std::pair<OrderByType, AbstractExpressionRef>> &order_bys, const Schema &schema)
+      : order_bys_(order_bys), schema_(schema) {}
+
+  bool operator()(const Tuple &t1, const Tuple &t2) {
+    for (auto p : order_bys_) {
+      auto t1_value = p.second->Evaluate(&t1, schema_);
+      auto t2_value = p.second->Evaluate(&t2, schema_);
+
+      if (p.first == OrderByType::DEFAULT || p.first == OrderByType::ASC) {
+        // 升序，升就返回true，降就返回false，等就继续遍历
+        if (t1_value.CompareLessThan(t2_value) == CmpBool::CmpTrue) {
+          return true;
+        } else if (t1_value.CompareGreaterThan(t2_value) == CmpBool::CmpTrue) {
+          return false;
+        }
+      } else if (p.first == OrderByType::DESC) {
+        // 降序，降就返回true，升就返回false，等就继续遍历
+        if (t1_value.CompareGreaterThan(t2_value) == CmpBool::CmpTrue) {
+          return true;
+        } else if (t1_value.CompareLessThan(t2_value) == CmpBool::CmpTrue) {
+          return false;
+        }
+      }
+    }
+
+    // 如果依照排序两者完全相等的话，则不应该交换顺序，返回true表明本来的顺序符合要求无需交换即可。
+    return true;
+  }
+};
+
 }  // namespace bustub
