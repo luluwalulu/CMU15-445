@@ -20,7 +20,7 @@ auto Watermark::RemoveTxn(timestamp_t read_ts) -> void {
     current_reads_.erase(read_ts);
   }
 
-  while (current_reads_.find(watermark_) == current_reads_.end()) {
+  while (current_reads_.find(watermark_) == current_reads_.end() && !current_reads_.empty()) {
     // 需要更新watermark_，在current_reads当中寻找
     watermark_++;
   }

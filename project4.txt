@@ -1,0 +1,7 @@
+当前bug：
+
+
+已解决bug：
+RemoveTxn函数中，如果while的循环条件只有current_reads_.find(watermark_) == current_reads_.end()的话
+， 那么假如watermark之下的所有事务都已经完成，那么将会无限循环。
+因此添加额外判断条件current_reads是否为空
