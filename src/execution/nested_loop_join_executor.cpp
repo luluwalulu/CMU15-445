@@ -64,7 +64,7 @@ void NestedLoopJoinExecutor::Init() {
         break;
       }
 
-      // std::cout<<"获取一次right_tuple"<<right_tuple.ToString()<<std::endl;
+      // 该表达式既处理了ON，也处理了WHERE
       bool b = plan_->Predicate()->EvaluateJoin(&left_tuple, left_schema, &right_tuple, right_schema).GetAs<bool>();
 
       if (b) {
