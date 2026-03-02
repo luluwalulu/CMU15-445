@@ -99,7 +99,7 @@ void WindowFunctionExecutor::Init() {
         if (!orderby_isempty) {
           aggregate_values[i][col_idx] = htable[key].aggregates_[0];
         }
-      } // 遍历元组
+      }  // 遍历元组
 
       if (orderby_isempty) {
         for (size_t i = 0; i < results.size(); i++) {

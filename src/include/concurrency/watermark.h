@@ -25,6 +25,7 @@ class Watermark {
 
   auto GetWatermark() -> timestamp_t {
     if (current_reads_.empty()) {
+      // 说明没有任何事务处于RUNNING状态，只能返回最后一个提交的事务的提交时间戳
       return commit_ts_;
     }
     return watermark_;
@@ -34,6 +35,7 @@ class Watermark {
 
   timestamp_t watermark_;
 
+  // current_reads_用于记录（读时间戳，具有相同时间戳的事务个数）
   std::unordered_map<timestamp_t, int> current_reads_;
 };
 
