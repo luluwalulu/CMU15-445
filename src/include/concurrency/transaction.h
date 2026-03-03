@@ -70,6 +70,7 @@ struct UndoLink {
   auto IsValid() const -> bool { return prev_txn_ != INVALID_TXN_ID; }
 };
 
+// UndoLog中记录的都是进行该增量操作之前该元组的状态
 struct UndoLog {
   /* Whether this log is a deletion marker */
   bool is_deleted_;
