@@ -25,7 +25,7 @@ auto ReconstructTuple(const Schema *schema, const Tuple &base_tuple, const Tuple
 
   for (const auto& undo_log : undo_logs) {
     // 如果进行增量操作前后，元组都处于被删除状态，那么毫无意义
-    if (!is_deleted && !undo_log.is_deleted_) {
+    if (is_deleted && undo_log.is_deleted_) {
       continue;
     }
 
@@ -50,10 +50,12 @@ auto ReconstructTuple(const Schema *schema, const Tuple &base_tuple, const Tuple
 
     // 获取Value，并构建最终的Tuple
     int col_idx = 0;
-    for (int i = 0; i < modified_fields.size(); i++) {
+    for (size_t i = 0; i < modified_fields.size(); i++) {
       if (modified_fields[i]) {
+        std::cout<<"第"<<i<<"列字段被修改为"<<modified_tuple.GetValue(&partial_schema, col_idx).ToString()<<std::endl;
         values.push_back(modified_tuple.GetValue(&partial_schema, col_idx++));
       } else {
+        std::cout<<"第"<<i<<"列字段保持原来的值"<<t.GetValue(schema, i).ToString()<<std::endl;
         values.push_back(t.GetValue(schema, i));
       }
     }
