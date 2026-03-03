@@ -24,6 +24,10 @@ auto Watermark::RemoveTxn(timestamp_t read_ts) -> void {
     // 需要更新watermark_，在current_reads当中寻找
     watermark_++;
   }
+
+  if (current_reads_.empty()) {
+    watermark_ = commit_ts_;
+  }
 }
 
 }  // namespace bustub

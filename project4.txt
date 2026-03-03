@@ -1,4 +1,10 @@
 当前bug：
+当前bug为，水位线本该为5，但却为4
+猜测还是RemoveTxn中的while逻辑有误。
+假设读时间戳为2的事务长时间未能完成，而时间戳为3，4，5的事务已经完成并提交
+按照之前的逻辑来讲，current_reads在移除了txn2之后应该为空，循环立刻终止，但watermark_没有更新
+所以，对于移除事务后导致水位线需要下降，且下降后导致current_reads为空的情况，
+我们直接将watermark更新为commit_ts
 
 
 已解决bug：

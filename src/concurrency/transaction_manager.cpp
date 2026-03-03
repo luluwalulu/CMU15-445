@@ -75,11 +75,12 @@ auto TransactionManager::Commit(Transaction *txn) -> bool {
   // TODO(fall2023): set commit timestamp + update last committed timestamp here.
   auto old_ts = last_commit_ts_.load();
   last_commit_ts_.store(old_ts + 1);
-  txn->commit_ts_.store(old_ts);
+  txn->commit_ts_.store(old_ts + 1);
 
   txn->state_ = TransactionState::COMMITTED;
   running_txns_.UpdateCommitTs(txn->commit_ts_);
   running_txns_.RemoveTxn(txn->read_ts_);
+  std::cout<<"提交号为"<<old_ts+1<<std::endl;
 
   return true;
 }

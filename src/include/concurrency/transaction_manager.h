@@ -142,6 +142,8 @@ class TransactionManager {
   /** Only one txn is allowed to commit at a time */
   std::mutex commit_mutex_;
   /** The last committed timestamp. */
+  // 由于初始时，该变量为0，所以当我们没有提交过任何事务时，认为上一个提交的事务为0
+  // 说明0为无效提交号，真正的提交从1开始
   std::atomic<timestamp_t> last_commit_ts_{0};
 
   /** Catalog */
