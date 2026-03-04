@@ -57,7 +57,6 @@ Tuple::Tuple(std::vector<Value> values, const Schema *schema) {
     } else {
       values[i].SerializeTo(data_.data() + col.GetOffset());
     }
-    std::cout << "第" << i << "列完事" << std::endl;
   }
 }
 

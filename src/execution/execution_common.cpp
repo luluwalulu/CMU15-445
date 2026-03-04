@@ -74,11 +74,6 @@ void TxnMgrDbg(const std::string &info, TransactionManager *txn_mgr, const Table
   // always use stderr for printing logs...
   fmt::println(stderr, "debug_hook: {}", info);
 
-  fmt::println(
-      stderr,
-      "You see this line of text because you have not implemented `TxnMgrDbg`. You should do this once you have "
-      "finished task 2. Implementing this helper function will save you a lot of time for debugging in later tasks.");
-
   // We recommend implementing this function as traversing the table heap and print the version chain. An example output
   // of our reference solution:
   //
@@ -93,6 +88,60 @@ void TxnMgrDbg(const std::string &info, TransactionManager *txn_mgr, const Table
   // RID=0/3 ts=txn6 <del marker> tuple=(<NULL>, <NULL>, <NULL>)
   //   txn6@0 (6, <NULL>, <NULL>) ts=2
   //   txn3@1 (7, _, _) ts=1
+  TableIterator itr(table_info->table_->MakeIterator());
+
+  while (!itr.IsEnd()) {
+    auto pii = itr.GetTuple();
+
+    auto meta = pii.first;
+    auto t = pii.second;
+    auto rid = t.GetRid();
+    // 表示堆中元组的提交时间戳
+    auto heap_ts = meta.ts_;
+    // 表示版本链中的第一个UndoLink连接
+    auto undo_link = txn_mgr->GetUndoLink(t.GetRid());
+    // 表示当前版本的元组是否被删除
+    bool is_deleted{meta.is_deleted_};
+    // 存储回退版本
+    std::vector<UndoLog> undo_logs;
+
+    std::cout<<"RID"<<rid.GetPageId()<<'/'<<rid.GetSlotNum()<<' ';
+    if (heap_ts > TXN_START_ID) {
+      std::cout<<"ts=txn"<<heap_ts-TXN_START_ID<<' ';
+    } else {
+      std::cout<<"ts="<<heap_ts<<' ';
+    }
+    if (is_deleted) {
+      std::cout<<"<del>"<<' ';
+    }
+    std::cout<<"tuple="<<t.ToString(&table_info->schema_)<<std::endl;
+
+    // 打印版本链
+    while (undo_link->IsValid()) {
+      std::cout<<"  ";
+      auto undo_log = txn_mgr->GetUndoLog(*undo_link);
+    
+      undo_logs.push_back(undo_log);
+      heap_ts = undo_log.ts_;
+      
+      is_deleted = undo_log.is_deleted_;
+      if (!is_deleted) {
+        t = *ReconstructTuple(&table_info->schema_, pii.second, meta, undo_logs);
+      }
+
+      std::cout<<"txn"<<undo_link->prev_txn_<<'@'<<undo_link->prev_log_idx_<<' ';
+      if (is_deleted) {
+        std::cout<<"<del>"<<' ';
+      } else {
+        std::cout<<t.ToString(&table_info->schema_)<<' ';
+      }
+      std::cout<<"ts="<<heap_ts<<std::endl;
+
+      undo_link = undo_log.prev_version_;
+    }
+
+    ++itr;
+  }
 }
 
 }  // namespace bustub

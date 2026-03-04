@@ -80,7 +80,7 @@ auto TransactionManager::Commit(Transaction *txn) -> bool {
   txn->state_ = TransactionState::COMMITTED;
   running_txns_.UpdateCommitTs(txn->commit_ts_);
   running_txns_.RemoveTxn(txn->read_ts_);
-  std::cout<<"提交号为"<<old_ts+1<<std::endl;
+  // std::cout << "提交号为" << old_ts + 1 << std::endl;
 
   return true;
 }
