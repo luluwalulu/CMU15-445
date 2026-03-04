@@ -56,7 +56,7 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     if (heap_ts < TXN_START_ID || heap_ts != TXN_START_ID + transac_id) {
       // 元组处于修改状态时，heap_ts远大于read_ts，自然而然满足循环需求
       // 回退直到满足当前事务读时间戳大于等于版本链中对应的提交时间戳
-      while (read_ts < heap_ts && undo_link.has_value()) {
+      while (read_ts < heap_ts && undo_link.has_value() && undo_link->IsValid()) {
         auto undo_log = txn_manager_->GetUndoLog(*undo_link);
         undo_logs.push_back(undo_log);
         heap_ts = undo_log.ts_;
