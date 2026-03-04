@@ -65,18 +65,15 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       }
 
       // 结果有两种，回退到满足条件的版本，和回退到最后都未能回退到满足条件的版本
-      if (read_ts < heap_ts && !is_deleted) {
+      if (read_ts >= heap_ts && !is_deleted) {
         // 回退到了正确的版本且没有被删除
         t = *ReconstructTuple(&GetOutputSchema(), pii.second, meta, undo_logs);
       } else {
+        std::cout<<"该元组回退失败"<<std::endl;
+        ++*itr_;
         continue;
       }
     }
-
-    // if (pii.first.is_deleted_) {
-    //   ++*itr_;
-    //   continue;
-    // }
 
     if (plan_->filter_predicate_) {
       auto v = plan_->filter_predicate_->Evaluate(&t, GetOutputSchema());
@@ -90,7 +87,6 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     *tuple = t;
     *rid = t.GetRid();
 
-    // tuple->SetRid(*rid); 这里逻辑应该是冗余的，故删除
     ++*itr_;
     return true;
   }

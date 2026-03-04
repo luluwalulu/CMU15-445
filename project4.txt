@@ -1,11 +1,19 @@
 当前bug：
+当前bug为打印时会打印不该打印的东西
+读时间戳为0时明明应该什么都看不到，却打印了四个元组
+修复两处bug，一处是元组回退失败后迭代器没有正常++
+另一处是回退成功的条件匹配有误
+修复后Task2.2通过
+
+
+已解决bug：
 打印错误消息Message :: undo log not exist
 因为在处理undo_link时没有考虑prev_txn_==INVALID_TXN_ID的情况
 修复后打印错误结果
 发现一处错误，t = *ReconstructTuple(&GetOutputSchema(), t, meta, undo_logs);
 这里重构函数要求提供的是元组的最开始的版本，如果提供t的话t会不断的变化
 
-已解决bug：
+
 C2: verify 2nd record
 tuple data mismatch: got (0, 1.000000, <NULL>); at column 1, actual value 1.000000 != expected value 2.000000
 本来的判断应该是当元组操作前后都处于被删除状态则跳过，但是条件误写为!deleted && !deleted
