@@ -53,7 +53,7 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     // 如果堆中元组处于最新状态可能需要回退
     // 堆中元组处于修改状态且该修改不来自当前事务同样需要回退
     // 只有该元组处于修改状态且该修改来自当前事务时才不需要回退
-    if (heap_ts < TXN_START_ID || heap_ts != TXN_START_ID + transac_id) {
+    if (heap_ts < TXN_START_ID || heap_ts != transac_id) {
       // 元组处于修改状态时，heap_ts远大于read_ts，自然而然满足循环需求
       // 回退直到满足当前事务读时间戳大于等于版本链中对应的提交时间戳
       while (read_ts < heap_ts && undo_link.has_value() && undo_link->IsValid()) {

@@ -39,7 +39,7 @@ auto InsertExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   const auto &schema = table_info->schema_;
   // 获取当前事务相关信息
   auto txn = exec_ctx_->GetTransaction();
-  auto txn_mgr = exec_ctx_->GetTransactionManager();
+  // auto txn_mgr = exec_ctx_->GetTransactionManager();
   auto read_ts = txn->GetReadTs();
 
   TupleMeta tmeta{0, false};
@@ -64,7 +64,8 @@ auto InsertExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     insert_sum++;
 
     // 原地修改元组的元信息，UndoLink，VersionLink
-    table_heap->UpdateTupleInPlace({TXN_START_ID + read_ts, false}, child_tuple, *option_rid, nullptr);
+    table_heap->UpdateTupleInPlace({txn->GetTransactionId(), false}, child_tuple, *option_rid, nullptr);
+    std::cout<<"插入元组的时间戳为txn"<<read_ts<<std::endl;
     // // UpdateUndoLink好像在该元组尚未有VersionUndoLink时自动给它提供一个空的？
     // txn_mgr->UpdateUndoLink(*option_rid, std::nullopt, nullptr);
     // // 上面的代码和猜测可能并不成立，但是我们现在的目的是给该元组提供一个VersionUndoLink，并且让这个版本链指向一个空的UndoLink
