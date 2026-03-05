@@ -55,6 +55,8 @@ auto TransactionManager::Commit(Transaction *txn) -> bool {
   std::unique_lock<std::mutex> commit_lck(commit_mutex_);
 
   // TODO(fall2023): acquire commit ts!
+  auto old_ts = last_commit_ts_.load();
+  auto new_ts = old_ts + 1;
 
   if (txn->state_ != TransactionState::RUNNING) {
     throw Exception("txn not in running state");
@@ -69,18 +71,28 @@ auto TransactionManager::Commit(Transaction *txn) -> bool {
   }
 
   // TODO(fall2023): Implement the commit logic!
-
   std::unique_lock<std::shared_mutex> lck(txn_map_mutex_);
+  // 接下来需要遍历该事务更改的所有元组，将时间戳设置为该提交时间戳
+  for (const auto& pii : txn->GetWriteSets()) {
+    auto table_info = catalog_->GetTable(pii.first);
+    auto table_heap = table_info->table_.get();
+    
+    for (auto& rid : pii.second) {
+      TupleMeta meta = table_heap->GetTupleMeta(rid);
+      meta.ts_ = new_ts;
+      table_heap->UpdateTupleMeta(meta, rid);
+    }
+  }
 
   // TODO(fall2023): set commit timestamp + update last committed timestamp here.
-  auto old_ts = last_commit_ts_.load();
-  last_commit_ts_.store(old_ts + 1);
-  txn->commit_ts_.store(old_ts + 1);
-
   txn->state_ = TransactionState::COMMITTED;
+  txn->commit_ts_.store(new_ts);
+  
   running_txns_.UpdateCommitTs(txn->commit_ts_);
   running_txns_.RemoveTxn(txn->read_ts_);
-  // std::cout << "提交号为" << old_ts + 1 << std::endl;
+
+  // 最终调整
+  last_commit_ts_.store(new_ts);
 
   return true;
 }
