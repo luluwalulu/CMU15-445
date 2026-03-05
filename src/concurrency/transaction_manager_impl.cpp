@@ -42,8 +42,11 @@ auto TransactionManager::UpdateVersionLink(RID rid, std::optional<VersionUndoLin
                                            std::function<bool(std::optional<VersionUndoLink>)> &&check) -> bool {
   std::unique_lock<std::shared_mutex> lck(version_info_mutex_);
   std::shared_ptr<PageVersionInfo> pg_ver_info = nullptr;
+  
+  // 寻找对应的PageVersionInfo
   auto iter = version_info_.find(rid.GetPageId());
   if (iter == version_info_.end()) {
+    // 如果没找到，就添加对应元组所在页的PageVersionInfo
     pg_ver_info = std::make_shared<PageVersionInfo>();
     version_info_[rid.GetPageId()] = pg_ver_info;
   } else {
@@ -51,19 +54,27 @@ auto TransactionManager::UpdateVersionLink(RID rid, std::optional<VersionUndoLin
   }
   std::unique_lock<std::shared_mutex> lck2(pg_ver_info->mutex_);
   lck.unlock();
+
+  // 寻找对应页中的元组的VersionUndoLink
   auto iter2 = pg_ver_info->prev_version_.find(rid.GetSlotNum());
   if (iter2 == pg_ver_info->prev_version_.end()) {
+    // 如果没找到对应元组，但是检验没有通过
     if (check != nullptr && !check(std::nullopt)) {
       return false;
     }
   } else {
+    // 找到了对应元组的VersionUndoLinkk，但是检验没有通过
     if (check != nullptr && !check(iter2->second)) {
       return false;
     }
   }
+
+  // 两种情况对应检验通过
   if (prev_version.has_value()) {
+    // 如果UpdateUndoLink真的传递了UndoLink，就用它构建新的VersionUndoLink（链表头节点）并更新
     pg_ver_info->prev_version_[rid.GetSlotNum()] = *prev_version;
   } else {
+    // 否则直接删除对应元组的槽位
     pg_ver_info->prev_version_.erase(rid.GetSlotNum());
   }
   return true;
@@ -72,6 +83,7 @@ auto TransactionManager::UpdateVersionLink(RID rid, std::optional<VersionUndoLin
 auto TransactionManager::GetVersionLink(RID rid) -> std::optional<VersionUndoLink> {
   std::shared_lock<std::shared_mutex> lck(version_info_mutex_);
   auto iter = version_info_.find(rid.GetPageId());
+  // 必须既有该元组对应的PageVersionInfo管理对应的页面
   if (iter == version_info_.end()) {
     return std::nullopt;
   }
@@ -79,6 +91,7 @@ auto TransactionManager::GetVersionLink(RID rid) -> std::optional<VersionUndoLin
   std::unique_lock<std::shared_mutex> lck2(pg_ver_info->mutex_);
   lck.unlock();
   auto iter2 = pg_ver_info->prev_version_.find(rid.GetSlotNum());
+  // 同时在该页面中又有对应的槽位VersionUndoLink管理该元组的版本链，才不会返回std::nullopt
   if (iter2 == pg_ver_info->prev_version_.end()) {
     return std::nullopt;
   }
