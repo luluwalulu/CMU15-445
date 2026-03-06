@@ -44,10 +44,10 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   auto table_heap = table_info_->table_.get();
   auto index_infos = catalog->GetTableIndexes(table_info_->name_);
   const auto &schema = table_info_->schema_;
-
-  TupleMeta new_meta{0, false};
-  TupleMeta delete_meta{0, true};
-
+  auto txn = exec_ctx_->GetTransaction();
+  auto txn_mgr = exec_ctx_->GetTransactionManager();
+  TupleMeta new_meta{txn->GetTransactionId(), false};
+  Tuple new_tuple{};
   int update_sum = 0;
 
   while (true) {
@@ -59,35 +59,116 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     tuples.push_back(child_tuple);
   }
 
-  // 对于每个元组，将其设为deleted。然后计算得到新的元组，最后将新的元组插入，然后更新索引
-  for (auto t : tuples) {
-    auto r = t.GetRid();
-    table_heap->UpdateTupleMeta(delete_meta, r);
+  // 遍历元组
+  for (auto base_tuple : tuples) {
+    auto r = base_tuple.GetRid();
+    auto base_meta = table_heap->GetTupleMeta(r);
+    auto base_ts = base_meta.ts_;
 
     std::vector<Value> values;
-    for (auto expr : plan_->target_expressions_) {
-      auto v = expr->Evaluate(&t, schema);
-      values.push_back(v);
-    }
-    Tuple new_tuple(values, &schema);
+    std::vector<Value> partial_values;
+    std::vector<Column> partial_columns;
+    std::vector<bool> modified_fields;
 
-    auto option_rid = table_heap->InsertTuple(new_meta, new_tuple);
-    if (option_rid == std::nullopt) {
-      throw "update执行器插入失败";
+    if (base_ts >= TXN_START_ID && base_ts == txn->GetTransactionId()) {
+      // 自我更新，更新表堆元组并更新当前事务的撤销日志
+      auto old_undo_link = txn_mgr->GetUndoLink(r);
+      auto old_log = txn->GetUndoLog(old_undo_link->prev_log_idx_);
+      std::vector<Column> old_partial_columns;
+      for (size_t i = 0; i < schema.GetColumnCount(); i++) {
+        old_partial_columns.push_back(schema.GetColumn(i));
+      }
+      Schema temp_schema(old_partial_columns);
+
+      for (size_t i = 0, j = 0; i < plan_->target_expressions_.size(); i++) {
+        const auto expr = plan_->target_expressions_[i];
+        auto v = expr->Evaluate(&base_tuple, schema);
+        Value old_value{};
+        // 如果上一次修改对元组的第i列进行了修改，那么必须在old_log中去取对应的Value，然后比较它和新的value是否相等
+        // 反之，我们只需要获取base_tuple的第i列即可，并与之比较即可
+        if (old_log.modified_fields_[i]) {
+          old_value = old_log.tuple_.GetValue(&temp_schema, j++);
+        } else {
+          old_value = base_tuple.GetValue(&schema, i);
+        }
+
+        if (v.CompareExactlyEquals(old_value)) {
+          modified_fields.push_back(false);
+        } else {
+          modified_fields.push_back(true);
+          partial_values.push_back(v);
+          partial_columns.push_back(schema.GetColumn(i));
+        }
+        values.push_back(v);
+      }
+      Tuple new_tuple = {values, &schema};
+      if (IsTupleContentEqual(base_tuple, new_tuple)) {
+        continue;
+      }
+
+      Schema partial_schema(partial_columns);
+      Tuple partial_tuple(partial_values, &partial_schema);
+      table_heap->UpdateTupleInPlace(new_meta, new_tuple, r, nullptr);
+      UndoLog new_log{old_log.is_deleted_, modified_fields, partial_tuple, old_log.ts_, old_log.prev_version_};
+      txn->ModifyUndoLog(old_undo_link->prev_log_idx_, new_log);
+    } else if(base_ts < TXN_START_ID && base_ts<= txn->GetReadTs()) {
+      // 正常修改，需要删除原来的元组，插入新的元组。同时生成撤销日志并插入
+      for (size_t i = 0; i < plan_->target_expressions_.size(); i++) {
+        const auto expr = plan_->target_expressions_[i];
+        auto v = expr->Evaluate(&base_tuple, schema);
+        if (v.CompareExactlyEquals(base_tuple.GetValue(&schema, i))) {
+          modified_fields.push_back(false);
+        } else {
+          modified_fields.push_back(true);
+          partial_values.push_back(v);
+          partial_columns.push_back(schema.GetColumn(i));
+        }
+        values.push_back(v);
+      }
+      new_tuple = {values, &schema};
+      if (IsTupleContentEqual(base_tuple, new_tuple)) {
+        continue;
+      }
+
+      bool ori_is_deleted{base_meta.is_deleted_};
+      // UndoLog中存储的是base_tuple相关的信息
+      Schema partial_schema(partial_columns);
+      Tuple partial_tuple(partial_values, &partial_schema);
+      // 如果堆元组之前的头UndoLink可能有效可能无效
+      auto opt_undo_link = txn_mgr->GetUndoLink(r);
+      UndoLink undo_link{};
+      if (opt_undo_link && opt_undo_link->IsValid()) {
+        undo_link = *opt_undo_link;
+      } 
+      UndoLog undo_log{ori_is_deleted, modified_fields, partial_tuple, base_meta.ts_, undo_link};
+      auto new_undo_link = txn->AppendUndoLog(std::move(undo_log));
+      txn_mgr->UpdateUndoLink(r, std::make_optional<UndoLink>(new_undo_link), nullptr);
+
+      base_meta.is_deleted_ = true;
+      table_heap->UpdateTupleMeta(base_meta, r);
+      auto opt_rid = table_heap->InsertTuple(new_meta, new_tuple);
+      if (opt_rid == std::nullopt) {
+        throw "update执行器插入失败";
+      }
+      r = *opt_rid;
+      new_tuple.SetRid(r);
+      update_sum++;
+    } else {
+      // 写写冲突
+      txn->SetTainted();
+      throw ExecutionException("update执行器发生了写写冲突");
     }
 
-    // 插入成功
-    new_tuple.SetRid(*option_rid);
-    update_sum++;
+    // 统一处理索引
     for (auto *info : index_infos) {
       auto *index = info->index_.get();
       auto key_schema = index->GetKeySchema();
       const auto &key_attrs = index->GetKeyAttrs();
-      auto old_key = t.KeyFromTuple(schema, *key_schema, key_attrs);
+      auto old_key = base_tuple.KeyFromTuple(schema, *key_schema, key_attrs);
       auto new_key = new_tuple.KeyFromTuple(schema, *key_schema, key_attrs);
 
       info->index_->DeleteEntry(old_key, r, exec_ctx_->GetTransaction());
-      info->index_->InsertEntry(new_key, *option_rid, exec_ctx_->GetTransaction());
+      info->index_->InsertEntry(new_key, r, exec_ctx_->GetTransaction());
     }
   }
 
