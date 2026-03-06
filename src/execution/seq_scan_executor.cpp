@@ -36,8 +36,8 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     auto pii = itr_->GetTuple();
 
     auto base_meta = pii.first;
+    // base_tuple可能需要回退，可能不需要回退，我们始终使用这一变量标识元组
     auto base_tuple = pii.second;
-    TupleMeta new_meta{};
     Tuple new_tuple{};
     // 表示堆中元组的提交时间戳
     auto heap_ts = base_meta.ts_;
@@ -63,19 +63,25 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
         undo_link = undo_log.prev_version_;
         is_deleted = undo_log.is_deleted_;
       }
+
+      if (read_ts >= heap_ts && !is_deleted) {
+        // 回退到了正确的版本且没有被删除 或者 修改来自当前事务且元组未被删除
+        base_tuple = *ReconstructTuple(&GetOutputSchema(), pii.second, base_meta, undo_logs);
+      } else {
+        // std::cout<<"该元组回退到最后都不满足条件"<<std::endl;
+        ++*itr_;
+        continue;
+      }
     }
 
-    if ((read_ts >= heap_ts || heap_ts >= TXN_START_ID) && !is_deleted) {
-      // 回退到了正确的版本且没有被删除 或者 修改来自当前事务且元组未被删除
-      new_tuple = *ReconstructTuple(&GetOutputSchema(), pii.second, base_meta, undo_logs);
-    } else {
-      std::cout<<"该元组回退到最后都不满足条件"<<std::endl;
+    if (is_deleted) {
+      // std::cout<<"堆上元组被当前事务修改，但是处于被删除状态"<<std::endl;
       ++*itr_;
       continue;
     }
 
     if (plan_->filter_predicate_) {
-      auto v = plan_->filter_predicate_->Evaluate(&new_tuple, GetOutputSchema());
+      auto v = plan_->filter_predicate_->Evaluate(&base_tuple, GetOutputSchema());
       BUSTUB_ASSERT(!v.IsNull(), "v不能为空");
       if (!v.GetAs<bool>()) {
         ++*itr_;
@@ -83,8 +89,8 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       }
     }
 
-    *tuple = new_tuple;
-    *rid = new_tuple.GetRid();
+    *tuple = base_tuple;
+    *rid = base_tuple.GetRid();
 
     ++*itr_;
     return true;
