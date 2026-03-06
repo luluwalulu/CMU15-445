@@ -35,18 +35,20 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   while (!itr_->IsEnd()) {
     auto pii = itr_->GetTuple();
 
-    auto meta = pii.first;
-    auto t = pii.second;
+    auto base_meta = pii.first;
+    auto base_tuple = pii.second;
+    TupleMeta new_meta{};
+    Tuple new_tuple{};
     // 表示堆中元组的提交时间戳
-    auto heap_ts = meta.ts_;
+    auto heap_ts = base_meta.ts_;
     // 表示该事务的读时间戳
     auto read_ts = txn_->GetReadTs();
     // 表示版本链中的第一个UndoLink连接
-    auto undo_link = txn_manager_->GetUndoLink(t.GetRid());
+    auto undo_link = txn_manager_->GetUndoLink(base_tuple.GetRid());
     // 存储回退版本
     std::vector<UndoLog> undo_logs;
     // 表示当前版本的元组是否被删除
-    bool is_deleted{meta.is_deleted_};
+    bool is_deleted{base_meta.is_deleted_};
     // 获取当前事务的ID
     auto transac_id = txn_->GetTransactionId();
 
@@ -54,8 +56,6 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     // 堆中元组处于修改状态且该修改不来自当前事务同样需要回退
     // 只有该元组处于修改状态且该修改来自当前事务时才不需要回退
     if (heap_ts < TXN_START_ID || heap_ts != transac_id) {
-      // 元组处于修改状态时，heap_ts远大于read_ts，自然而然满足循环需求
-      // 回退直到满足当前事务读时间戳大于等于版本链中对应的提交时间戳
       while (read_ts < heap_ts && undo_link.has_value() && undo_link->IsValid()) {
         auto undo_log = txn_manager_->GetUndoLog(*undo_link);
         undo_logs.push_back(undo_log);
@@ -63,20 +63,19 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
         undo_link = undo_log.prev_version_;
         is_deleted = undo_log.is_deleted_;
       }
+    }
 
-      // 结果有两种，回退到满足条件的版本，和回退到最后都未能回退到满足条件的版本
-      if (read_ts >= heap_ts && !is_deleted) {
-        // 回退到了正确的版本且没有被删除
-        t = *ReconstructTuple(&GetOutputSchema(), pii.second, meta, undo_logs);
-      } else {
-        std::cout<<"该元组回退失败"<<std::endl;
-        ++*itr_;
-        continue;
-      }
+    if ((read_ts >= heap_ts || heap_ts >= TXN_START_ID) && !is_deleted) {
+      // 回退到了正确的版本且没有被删除 或者 修改来自当前事务且元组未被删除
+      new_tuple = *ReconstructTuple(&GetOutputSchema(), pii.second, base_meta, undo_logs);
+    } else {
+      std::cout<<"该元组回退到最后都不满足条件"<<std::endl;
+      ++*itr_;
+      continue;
     }
 
     if (plan_->filter_predicate_) {
-      auto v = plan_->filter_predicate_->Evaluate(&t, GetOutputSchema());
+      auto v = plan_->filter_predicate_->Evaluate(&new_tuple, GetOutputSchema());
       BUSTUB_ASSERT(!v.IsNull(), "v不能为空");
       if (!v.GetAs<bool>()) {
         ++*itr_;
@@ -84,8 +83,8 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       }
     }
 
-    *tuple = t;
-    *rid = t.GetRid();
+    *tuple = new_tuple;
+    *rid = new_tuple.GetRid();
 
     ++*itr_;
     return true;
