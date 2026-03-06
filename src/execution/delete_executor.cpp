@@ -23,39 +23,92 @@ DeleteExecutor::DeleteExecutor(ExecutorContext *exec_ctx, const DeletePlanNode *
 void DeleteExecutor::Init() { child_executor_->Init(); }
 
 auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
-  if (is_finished) {
-    return false;
-  }
-
-  Tuple child_tuple{};
-  TupleMeta delete_meta{0, true};
+  Tuple base_tuple{};
+  Tuple log_tuple{};
+  TupleMeta base_meta{};
+  TupleMeta new_meta{};
   int delete_sum = 0;
 
   auto catalog = exec_ctx_->GetCatalog();
   table_oid_t oid = plan_->GetTableOid();
   auto table_info = catalog->GetTable(oid);
   auto table_heap = table_info->table_.get();
-
   auto index_info = catalog->GetTableIndexes(table_info->name_);
-
   const auto &schema = table_info->schema_;
+  auto txn = exec_ctx_->GetTransaction();
+  auto txn_mgr = exec_ctx_->GetTransactionManager();
+  new_meta = {TXN_START_ID + txn->GetTransactionId(), true};
 
   while (true) {
-    const auto status = child_executor_->Next(&child_tuple, rid);
+    const auto status = child_executor_->Next(&base_tuple, rid);
     if (!status) {
       break;
     }
+    auto r = base_tuple.GetRid();
+    base_meta = table_heap->GetTupleMeta(r);
+    auto base_ts = base_meta.ts_;
 
-    // 删除对应元组
-    auto r = child_tuple.GetRid();
-    table_heap->UpdateTupleMeta(delete_meta, r);
+    std::vector<Value> values;
+    std::vector<bool> modified_fields;
+
+    if (base_ts >= TXN_START_ID && base_ts == txn->GetTransactionId()) {
+      // 自我更新
+      // 此时表堆元组直接更新为删除状态即可
+      // 此时撤销日志需要保存所有的Value，视为所有列都被修改
+      auto old_undo_link = txn_mgr->GetUndoLink(r);
+      auto old_log = txn->GetUndoLog(old_undo_link->prev_log_idx_);
+      std::vector<Column> old_partial_columns;
+      for (size_t i = 0; i < schema.GetColumnCount(); i++) {
+        old_partial_columns.push_back(schema.GetColumn(i));
+      }
+      Schema temp_schema(old_partial_columns);
+
+      for (size_t i = 0, j = 0; i < schema.GetColumnCount(); i++) {
+        Value old_value{};
+        // 如果上一次修改对元组的第i列进行了修改，那么必须在old_log中去取对应的Value，然后比较它和新的value是否相等
+        // 反之，我们只需要获取base_tuple的第i列即可，并与之比较即可
+        if (old_log.modified_fields_[i]) {
+          old_value = old_log.tuple_.GetValue(&temp_schema, j++);
+        } else {
+          old_value = base_tuple.GetValue(&schema, i);
+        }
+        modified_fields.push_back(true);
+        values.push_back(old_value);
+      }
+      log_tuple = {values, &schema};
+      UndoLog new_log{old_log.is_deleted_, modified_fields, log_tuple, old_log.ts_, old_log.prev_version_};
+
+      table_heap->UpdateTupleMeta(new_meta, r);
+      txn->ModifyUndoLog(old_undo_link->prev_log_idx_, new_log);
+    } else if(base_ts < TXN_START_ID && base_ts<= txn->GetReadTs()) {
+      // 同样将堆上元组直接删除，但是需要插入新的撤销日志
+      // 撤销日志中保存当前堆上元组的信息
+      // UndoLog中存储的是base_tuple相关的信息
+      modified_fields.assign(schema.GetColumnCount(), true);
+      // 如果堆元组之前的头UndoLink可能有效可能无效
+      auto opt_undo_link = txn_mgr->GetUndoLink(r);
+      UndoLink undo_link{};
+      if (opt_undo_link && opt_undo_link->IsValid()) {
+        undo_link = *opt_undo_link;
+      } 
+      UndoLog undo_log{false, modified_fields, base_tuple, base_meta.ts_, undo_link};
+      auto new_undo_link = txn->AppendUndoLog(std::move(undo_log));
+      txn_mgr->UpdateUndoLink(r, std::make_optional<UndoLink>(new_undo_link), nullptr);
+
+      table_heap->UpdateTupleMeta(new_meta, r);
+    } else {
+      // 写写冲突
+      txn->SetTainted();
+      throw ExecutionException("update执行器发生了写写冲突");
+    }
 
     delete_sum++;
+
     for (auto *info : index_info) {
       auto *index = info->index_.get();
       auto key_schema = index->GetKeySchema();
       const auto &key_attrs = index->GetKeyAttrs();
-      auto key = child_tuple.KeyFromTuple(schema, *key_schema, key_attrs);
+      auto key = base_tuple.KeyFromTuple(schema, *key_schema, key_attrs);
 
       info->index_->DeleteEntry(key, r, exec_ctx_->GetTransaction());
     }
@@ -66,7 +119,6 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
   *tuple = Tuple(return_values, &GetOutputSchema());
   rid->Set(INVALID_PAGE_ID, 0);
 
-  is_finished = true;
   return true;
 }
 
