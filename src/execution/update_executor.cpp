@@ -46,7 +46,7 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   const auto &schema = table_info_->schema_;
   auto txn = exec_ctx_->GetTransaction();
   auto txn_mgr = exec_ctx_->GetTransactionManager();
-  TupleMeta new_meta{txn->GetTransactionId(), false};
+  TupleMeta new_meta{txn->GetTransactionId() + TXN_START_ID, false};
   Tuple new_tuple{};
   int update_sum = 0;
 

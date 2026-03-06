@@ -23,6 +23,10 @@ DeleteExecutor::DeleteExecutor(ExecutorContext *exec_ctx, const DeletePlanNode *
 void DeleteExecutor::Init() { child_executor_->Init(); }
 
 auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
+  if (is_finished_) {
+    return false;
+  } 
+
   Tuple base_tuple{};
   Tuple log_tuple{};
   TupleMeta base_meta{};
@@ -55,8 +59,15 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
       // 自我更新
       // 此时表堆元组直接更新为删除状态即可
       // 此时撤销日志需要保存所有的Value，视为所有列都被修改
-      auto old_undo_link = txn_mgr->GetUndoLink(r);
-      auto old_log = txn->GetUndoLog(old_undo_link->prev_log_idx_);
+      auto opt_undo_link = txn_mgr->GetUndoLink(r);
+      if (!opt_undo_link || !opt_undo_link->IsValid()) {
+        if (!opt_undo_link->IsValid()) {
+          std::cout<<"能够获取UndoLink但是是无效Link"<<std::endl;
+        }
+        table_heap->UpdateTupleMeta({0, true}, r);
+        continue;
+      }
+      auto old_log = txn->GetUndoLog(opt_undo_link->prev_log_idx_);
       std::vector<Column> old_partial_columns;
       for (size_t i = 0; i < schema.GetColumnCount(); i++) {
         old_partial_columns.push_back(schema.GetColumn(i));
@@ -79,7 +90,7 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
       UndoLog new_log{old_log.is_deleted_, modified_fields, log_tuple, old_log.ts_, old_log.prev_version_};
 
       table_heap->UpdateTupleMeta(new_meta, r);
-      txn->ModifyUndoLog(old_undo_link->prev_log_idx_, new_log);
+      txn->ModifyUndoLog(opt_undo_link->prev_log_idx_, new_log);
     } else if(base_ts < TXN_START_ID && base_ts<= txn->GetReadTs()) {
       // 同样将堆上元组直接删除，但是需要插入新的撤销日志
       // 撤销日志中保存当前堆上元组的信息
@@ -119,6 +130,7 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
   *tuple = Tuple(return_values, &GetOutputSchema());
   rid->Set(INVALID_PAGE_ID, 0);
 
+  is_finished_ = true;
   return true;
 }
 
