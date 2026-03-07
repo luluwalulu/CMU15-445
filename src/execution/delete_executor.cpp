@@ -41,7 +41,7 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
   const auto &schema = table_info->schema_;
   auto txn = exec_ctx_->GetTransaction();
   auto txn_mgr = exec_ctx_->GetTransactionManager();
-  new_meta = {TXN_START_ID + txn->GetTransactionId(), true};
+  new_meta = {txn->GetTransactionId(), true};
 
   while (true) {
     const auto status = child_executor_->Next(&base_tuple, rid);
