@@ -48,16 +48,20 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
     if (!status) {
       break;
     }
-    auto r = base_tuple.GetRid();
-    base_meta = table_heap->GetTupleMeta(r);
+    // std::cout<<r.ToString()<<std::endl;
+    // std::cout<<rid->ToString()<<std::endl;
+    auto r = *rid;
+    auto pii = table_heap->GetTuple(r);
+    base_tuple = pii.second;
+    base_meta = pii.first;
     auto base_ts = base_meta.ts_;
 
     std::vector<Value> values;
     std::vector<bool> modified_fields;
 
     if (base_ts >= TXN_START_ID && base_ts == txn->GetTransactionId()) {
-      // 自我更新
-      // 此时表堆元组直接更新为删除状态即可,撤销日志需要保存所有的Value
+      // 自我更新，此时表堆元组直接更新为删除状态即可,撤销日志需要保存所有的Value
+      // std::cout<<"情况一"<<std::endl;
       auto opt_undo_link = txn_mgr->GetUndoLink(r);
       if (!opt_undo_link || !opt_undo_link->IsValid()) {
         if (!opt_undo_link->IsValid()) {
@@ -90,18 +94,16 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
 
       table_heap->UpdateTupleMeta(new_meta, r);
       txn->ModifyUndoLog(opt_undo_link->prev_log_idx_, new_log);
-    } else if(base_ts < TXN_START_ID && base_ts<= txn->GetReadTs()) {
+    } else if(base_ts < TXN_START_ID && base_ts <= txn->GetReadTs()) {
       // 同样将堆上元组直接删除，但是需要插入新的撤销日志
-      // 撤销日志中保存当前堆上元组的信息
-      // UndoLog中存储的是base_tuple相关的信息
+      // std::cout<<"情况二"<<std::endl;
       modified_fields.assign(schema.GetColumnCount(), true);
-      // 如果堆元组之前的头UndoLink可能有效可能无效
       auto opt_undo_link = txn_mgr->GetUndoLink(r);
       UndoLink undo_link{};
       if (opt_undo_link && opt_undo_link->IsValid()) {
         undo_link = *opt_undo_link;
       } 
-      std::cout<<"正常修改，堆元组的提交时间戳为"<<base_meta.ts_<<std::endl;
+      // std::cout<<"正常修改，堆元组的提交时间戳为"<<base_meta.ts_<<std::endl;
       UndoLog undo_log{false, modified_fields, base_tuple, base_meta.ts_, undo_link};
       auto new_undo_link = txn->AppendUndoLog(std::move(undo_log));
       txn_mgr->UpdateUndoLink(r, std::make_optional<UndoLink>(new_undo_link), nullptr);
@@ -110,6 +112,7 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
       txn->AppendWriteSet(table_info->oid_, r);
     } else {
       // 写写冲突
+      // std::cout<<"情况三"<<std::endl;
       txn->SetTainted();
       throw ExecutionException("update执行器发生了写写冲突");
     }
