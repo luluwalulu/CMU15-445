@@ -86,6 +86,7 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
         update_sum++;
         continue;
       }
+
       auto old_log = txn->GetUndoLog(old_undo_link->prev_log_idx_);
       std::vector<Column> old_partial_columns;
       for (size_t i = 0; i < schema.GetColumnCount(); i++) {
@@ -99,26 +100,30 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
         const auto expr = plan_->target_expressions_[i];
         auto new_value = expr->Evaluate(&base_tuple, schema);
         Value old_value{};
-        // 如果上一次修改对元组的第i列进行了修改，那么必须在old_log中去取对应的Value，然后比较它和新的value是否相等
-        // 反之，我们只需要获取base_tuple的第i列即可，并与之比较即可
         if (old_log.modified_fields_[i]) {
           old_value = old_log.tuple_.GetValue(&temp_schema, j++);
         } else {
           old_value = base_tuple.GetValue(&schema, i);
         }
 
-        if (new_value.CompareExactlyEquals(old_value)) {
+        // 如果该列值之前没有被修改过且修改前后值不变
+        if (!old_log.modified_fields_[i] && new_value.CompareExactlyEquals(old_value)) {
+          values.push_back(new_value);
           modified_fields.push_back(false);
-        } else {
-          modified_fields.push_back(true);
-          partial_values.push_back(old_value);
-          partial_columns.push_back(schema.GetColumn(i));
+          continue;
         }
+
+        modified_fields.push_back(true);
+        partial_values.push_back(old_value);
+        partial_columns.push_back(schema.GetColumn(i));
         values.push_back(new_value);
       }
+
+      // std::cout<<"new_tuple:"<<"valus.size="<<values.size()<<"，schema列数为"<<schema.GetColumnCount()<<std::endl;
       new_tuple = {values, &schema};
       new_tuple.SetRid(base_tuple.GetRid());
 
+      // std::cout<<"partial_tuple:"<<"valus.size="<<partial_values.size()<<"，schema列数为"<<partial_columns.size()<<std::endl;
       Schema partial_schema(partial_columns);
       Tuple partial_tuple(partial_values, &partial_schema);
       UndoLog new_log{old_log.is_deleted_, modified_fields, partial_tuple, old_log.ts_, old_log.prev_version_};
