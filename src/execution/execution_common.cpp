@@ -12,12 +12,6 @@ namespace bustub {
 
 auto ReconstructTuple(const Schema *schema, const Tuple &base_tuple, const TupleMeta &base_meta,
                       const std::vector<UndoLog> &undo_logs) -> std::optional<Tuple> {
-  // undo_logs中已经包含我们所需要的所有UndoLog
-  // 举个例子，读时间戳为10的事务想要读取元组t，元组t的版本链为1，5，8，9，11，13，14
-  // 则我们拥有的信息如下
-  // 最新版本的元组base_tuple
-  // undo_logs：包含提交号为9，11，13，14的事务中对应元组的UndoLog，最终回退到修改9对应的版本
-
   // 我们返回的是一个std::optional<Tuple>，这意味着，某些情况下，我们可能需要返回std::nullopt
   // 即对应这种情况，元组t在当前事务的快照中恰好处于被删除状态
   Tuple t(base_tuple);
@@ -61,6 +55,7 @@ auto ReconstructTuple(const Schema *schema, const Tuple &base_tuple, const Tuple
       }
     }
     t = {values, schema};
+    t.SetRid(base_tuple.GetRid());
   }
 
   if (is_deleted) {
