@@ -36,7 +36,7 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     return false;
   }
 
-  std::vector<Tuple> tuples;
+  std::vector<RID> rids;
   Tuple child_tuple{};
 
   auto catalog = exec_ctx_->GetCatalog();
@@ -55,12 +55,13 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       break;
     }
 
-    tuples.push_back(child_tuple);
+    rids.push_back(*rid);
   }
 
-  for (auto base_tuple : tuples) {
-    auto r = base_tuple.GetRid();
-    auto base_meta = table_heap->GetTupleMeta(r);
+  for (auto r : rids) {
+    auto pii = table_heap->GetTuple(r);
+    auto base_meta = pii.first;
+    auto base_tuple = pii.second;
     auto base_ts = base_meta.ts_;
 
     std::vector<Value> values;
@@ -71,6 +72,20 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     if (base_ts >= TXN_START_ID && base_ts == txn->GetTransactionId()) {
       // 自我更新，更新表堆元组并更新当前事务的撤销日志
       auto old_undo_link = txn_mgr->GetUndoLink(r);
+      // 如果old_undo_link为空，说明该元组刚刚被当前事务插入，当前版本我们不需要生成undo_log
+      // 直接修改完值就OK
+      if (!old_undo_link || !old_undo_link->IsValid()) {
+        for (size_t i = 0; i < plan_->target_expressions_.size(); i++) {
+          const auto expr = plan_->target_expressions_[i];
+          auto v = expr->Evaluate(&base_tuple, schema);
+          values.push_back(v);
+        }
+        new_tuple = {values, &schema};
+        new_tuple.SetRid(base_tuple.GetRid());
+        table_heap->UpdateTupleInPlace(new_meta, new_tuple, r, nullptr);
+        update_sum++;
+        continue;
+      }
       auto old_log = txn->GetUndoLog(old_undo_link->prev_log_idx_);
       std::vector<Column> old_partial_columns;
       for (size_t i = 0; i < schema.GetColumnCount(); i++) {
@@ -99,7 +114,8 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
         }
         values.push_back(v);
       }
-      Tuple new_tuple = {values, &schema};
+      new_tuple = {values, &schema};
+      new_tuple.SetRid(base_tuple.GetRid());
       if (IsTupleContentEqual(base_tuple, new_tuple)) {
         continue;
       }
@@ -126,6 +142,7 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
         values.push_back(v);
       }
       new_tuple = {values, &schema};
+      new_tuple.SetRid(base_tuple.GetRid());
       if (IsTupleContentEqual(base_tuple, new_tuple)) {
         continue;
       }

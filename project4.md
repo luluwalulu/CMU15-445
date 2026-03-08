@@ -1,13 +1,18 @@
 # 当前bug：
 
-1. 删除执行器获取seq_scan_executor传输的元组后，发现该元组的Rid为无效rid，该元组当前处于被另一个活跃事务删除的状态，期望结果是发生写写冲突。
-2. 发现另一个问题是当我们的seq_scan_executor构建出了一个符合要求的read_ts>=commit_ts的元组后，update和delete执行器需要的反而是堆上元组的最新版本，此时我们只应该将rid作为参考物，而忽略child_tuple
-3. **修改1：我发现在ReconstructTuple函数中，我根据values和schema构建出了最新的tuple之后，没有对这个tuple进行SetRid。修改完该错误之后测试4通过**
-4. **delete执行器修改2进行后进度和修改1相同，应该是这个测试本身比较拉跨吧。**
+- update执行器少检查了一个undolink就直接用这个link来获取log了，导致GetUndoLog挂掉
+- 在delete和update执行器中尽可能添加了GetRid，并处理了上面的一条bug，UpdateTest1通过，错误来到UpdateTest2，错误类型为结果不匹配
 
 ---
 
 # 已解决bug：
+
+
+* 删除执行器获取seq_scan_executor传输的元组后，发现该元组的Rid为无效rid，该元组当前处于被另一个活跃事务删除的状态，期望结果是发生写写冲突。
+* 发现另一个问题是当我们的seq_scan_executor构建出了一个符合要求的read_ts>=commit_ts的元组后，update和delete执行器需要的反而是堆上元组的最新版本，此时我们只应该将rid作为参考物，而忽略child_tuple
+* **修改1：我发现在ReconstructTuple函数中，我根据values和schema构建出了最新的tuple之后，没有对这个tuple进行SetRid。修改完该错误之后测试4通过**
+* **delete执行器修改2进行后进度和修改1相同，应该是这个测试本身比较拉跨吧。**
+* **update执行器修改2进行之后进度还是一样，被其他bug给卡住了**
 
     
 

@@ -90,6 +90,7 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
         values.push_back(old_value);
       }
       log_tuple = {values, &schema};
+      log_tuple.SetRid(base_tuple.GetRid());
       UndoLog new_log{old_log.is_deleted_, modified_fields, log_tuple, old_log.ts_, old_log.prev_version_};
 
       table_heap->UpdateTupleMeta(new_meta, r);
