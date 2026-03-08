@@ -93,6 +93,7 @@ auto TransactionManager::Commit(Transaction *txn) -> bool {
 
   // 最终调整
   last_commit_ts_.store(new_ts);
+  // std::cout<<"ID为"<<txn->GetTransactionId() - TXN_START_ID<<"的事务提交成功"<<std::endl;
 
   return true;
 }

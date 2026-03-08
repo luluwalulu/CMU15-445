@@ -31,7 +31,6 @@ void UpdateExecutor::Init() {
 
 // Update算子并非在原地内存上更新值，而是删除要被修改的那一行，然后插入被修改后的那一行
 // Update算子必须避免的一种情况是一边取，一边做“删除插入”，因为Update算子会插入新的元组，导致会需要从下一层获取新的元组，导致死循环
-// 所以需要先获取完所有元组，才一次性处理
 auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   if (is_finish_) {
     return false;
@@ -59,7 +58,6 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     tuples.push_back(child_tuple);
   }
 
-  // 遍历元组
   for (auto base_tuple : tuples) {
     auto r = base_tuple.GetRid();
     auto base_meta = table_heap->GetTupleMeta(r);
@@ -108,9 +106,11 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
 
       Schema partial_schema(partial_columns);
       Tuple partial_tuple(partial_values, &partial_schema);
-      table_heap->UpdateTupleInPlace(new_meta, new_tuple, r, nullptr);
       UndoLog new_log{old_log.is_deleted_, modified_fields, partial_tuple, old_log.ts_, old_log.prev_version_};
+
+      table_heap->UpdateTupleInPlace(new_meta, new_tuple, r, nullptr);
       txn->ModifyUndoLog(old_undo_link->prev_log_idx_, new_log);
+      update_sum++;
     } else if(base_ts < TXN_START_ID && base_ts<= txn->GetReadTs()) {
       // 正常修改，需要删除原来的元组，插入新的元组。同时生成撤销日志并插入
       for (size_t i = 0; i < plan_->target_expressions_.size(); i++) {
@@ -153,6 +153,7 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       r = *opt_rid;
       new_tuple.SetRid(r);
       update_sum++;
+      txn->AppendWriteSet(table_info_->oid_, r);
     } else {
       // 写写冲突
       txn->SetTainted();

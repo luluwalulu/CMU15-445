@@ -66,6 +66,7 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
 
       if (read_ts >= heap_ts && !is_deleted) {
         // 回退到了正确的版本且没有被删除 或者 修改来自当前事务且元组未被删除
+        // std::cout<<"该元组回退通过"<<std::endl;
         base_tuple = *ReconstructTuple(&GetOutputSchema(), pii.second, base_meta, undo_logs);
       } else {
         // std::cout<<"该元组回退到最后都不满足条件"<<std::endl;

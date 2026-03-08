@@ -133,7 +133,7 @@ void TxnMgrDbg(const std::string &info, TransactionManager *txn_mgr, const Table
         t = *ReconstructTuple(&table_info->schema_, pii.second, meta, undo_logs);
       }
 
-      std::cout<<"txn"<<undo_link->prev_txn_<<'@'<<undo_link->prev_log_idx_<<' ';
+      std::cout<<"txn"<<undo_link->prev_txn_ - TXN_START_ID<<'@'<<undo_link->prev_log_idx_<<' ';
       if (is_deleted) {
         std::cout<<"<del>"<<' ';
       } else {

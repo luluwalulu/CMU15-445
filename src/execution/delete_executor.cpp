@@ -57,8 +57,7 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
 
     if (base_ts >= TXN_START_ID && base_ts == txn->GetTransactionId()) {
       // 自我更新
-      // 此时表堆元组直接更新为删除状态即可
-      // 此时撤销日志需要保存所有的Value，视为所有列都被修改
+      // 此时表堆元组直接更新为删除状态即可,撤销日志需要保存所有的Value
       auto opt_undo_link = txn_mgr->GetUndoLink(r);
       if (!opt_undo_link || !opt_undo_link->IsValid()) {
         if (!opt_undo_link->IsValid()) {
@@ -102,11 +101,13 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
       if (opt_undo_link && opt_undo_link->IsValid()) {
         undo_link = *opt_undo_link;
       } 
+      std::cout<<"正常修改，堆元组的提交时间戳为"<<base_meta.ts_<<std::endl;
       UndoLog undo_log{false, modified_fields, base_tuple, base_meta.ts_, undo_link};
       auto new_undo_link = txn->AppendUndoLog(std::move(undo_log));
       txn_mgr->UpdateUndoLink(r, std::make_optional<UndoLink>(new_undo_link), nullptr);
 
       table_heap->UpdateTupleMeta(new_meta, r);
+      txn->AppendWriteSet(table_info->oid_, r);
     } else {
       // 写写冲突
       txn->SetTainted();
