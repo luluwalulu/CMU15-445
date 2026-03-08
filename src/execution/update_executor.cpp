@@ -147,7 +147,6 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
         continue;
       }
 
-      bool ori_is_deleted{base_meta.is_deleted_};
       // UndoLog中存储的是base_tuple相关的信息
       Schema partial_schema(partial_columns);
       Tuple partial_tuple(partial_values, &partial_schema);
@@ -157,18 +156,19 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       if (opt_undo_link && opt_undo_link->IsValid()) {
         undo_link = *opt_undo_link;
       } 
-      UndoLog undo_log{ori_is_deleted, modified_fields, partial_tuple, base_meta.ts_, undo_link};
+      UndoLog undo_log{false, modified_fields, partial_tuple, base_meta.ts_, undo_link};
       auto new_undo_link = txn->AppendUndoLog(std::move(undo_log));
       txn_mgr->UpdateUndoLink(r, std::make_optional<UndoLink>(new_undo_link), nullptr);
 
-      base_meta.is_deleted_ = true;
-      table_heap->UpdateTupleMeta(base_meta, r);
-      auto opt_rid = table_heap->InsertTuple(new_meta, new_tuple);
-      if (opt_rid == std::nullopt) {
-        throw "update执行器插入失败";
-      }
-      r = *opt_rid;
+      // base_meta.is_deleted_ = true;
+      // table_heap->UpdateTupleMeta(base_meta, r);
+      // auto opt_rid = table_heap->InsertTuple(new_meta, new_tuple);
+      // if (opt_rid == std::nullopt) {
+      //   throw "update执行器插入失败";
+      // }
+      // r = *opt_rid;
       new_tuple.SetRid(r);
+      table_heap->UpdateTupleInPlace(new_meta, new_tuple, r, nullptr);
       update_sum++;
       txn->AppendWriteSet(table_info_->oid_, r);
     } else {

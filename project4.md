@@ -2,25 +2,22 @@
 
 - update执行器少检查了一个undolink就直接用这个link来获取log了，导致GetUndoLog挂掉
 - 在delete和update执行器中尽可能添加了GetRid，并处理了上面的一条bug，UpdateTest1通过，错误来到UpdateTest2，错误类型为结果不匹配
+- **发现错误原因：一个坏消息是，现在的update执行器不必像之前一样先删除再插入了，我们直接在原地更新即可，因此我们不得不堆代码进行大量修改。我们首先对第二个条件的代码进行修改。**
+- 当前修改后达到了原地更新的效果，但是结果匹配仍然有误
 
 ---
 
 # 已解决bug：
-
 
 * 删除执行器获取seq_scan_executor传输的元组后，发现该元组的Rid为无效rid，该元组当前处于被另一个活跃事务删除的状态，期望结果是发生写写冲突。
 * 发现另一个问题是当我们的seq_scan_executor构建出了一个符合要求的read_ts>=commit_ts的元组后，update和delete执行器需要的反而是堆上元组的最新版本，此时我们只应该将rid作为参考物，而忽略child_tuple
 * **修改1：我发现在ReconstructTuple函数中，我根据values和schema构建出了最新的tuple之后，没有对这个tuple进行SetRid。修改完该错误之后测试4通过**
 * **delete执行器修改2进行后进度和修改1相同，应该是这个测试本身比较拉跨吧。**
 * **update执行器修改2进行之后进度还是一样，被其他bug给卡住了**
-
-    
-
 * **发现一处错误：在删除和更新执行器中，我把TXN_START_ID+transac_id作为了新的时间戳，修改为将transac_id作为临时事务时间戳。修改完后在F: check scan txn5挂掉，原因是结果不匹配，但是明明debug_hook打印结果都正确，结果却不匹配。推测为顺序扫描执行器的问题。**
 * 事务2在即txn3在提交时RID0/1未能提交成功，提交后仍然显示txn3。txn2删除值为5的元组，删除时该元组被txn4修改，写写冲突不应生效。
 * 所以问题在于txn3提交时未能成功，导致值为2的元组仍然处于未提交状态，因此本不该包含的值为2的元组也被包含在内。
 * 发现原因：update执行器和delete执行器进行写操作时没有添加到writesets当中。修复后三号测试通过
-
 
 - B: check scan txn2时，之后打印版本链时发现撤销日志中有临时事务时间戳。发现是TxnMgrDbg有误
 - InsertDeleteTest的txn4结果mismatch- 期待结果两个元组（1，2），结果只有1。同时B: check scan txn2修改之后得debug_hook打印得那个被删除得元组的时间戳是ts=-9223372036854775805，删除元组的时间戳逻辑很可能有误。
