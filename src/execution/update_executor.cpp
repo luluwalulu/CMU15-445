@@ -89,13 +89,15 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       auto old_log = txn->GetUndoLog(old_undo_link->prev_log_idx_);
       std::vector<Column> old_partial_columns;
       for (size_t i = 0; i < schema.GetColumnCount(); i++) {
-        old_partial_columns.push_back(schema.GetColumn(i));
+        if (old_log.modified_fields_[i]) {
+          old_partial_columns.push_back(schema.GetColumn(i));
+        }
       }
       Schema temp_schema(old_partial_columns);
 
       for (size_t i = 0, j = 0; i < plan_->target_expressions_.size(); i++) {
         const auto expr = plan_->target_expressions_[i];
-        auto v = expr->Evaluate(&base_tuple, schema);
+        auto new_value = expr->Evaluate(&base_tuple, schema);
         Value old_value{};
         // 如果上一次修改对元组的第i列进行了修改，那么必须在old_log中去取对应的Value，然后比较它和新的value是否相等
         // 反之，我们只需要获取base_tuple的第i列即可，并与之比较即可
@@ -105,14 +107,14 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
           old_value = base_tuple.GetValue(&schema, i);
         }
 
-        if (v.CompareExactlyEquals(old_value)) {
+        if (new_value.CompareExactlyEquals(old_value)) {
           modified_fields.push_back(false);
         } else {
           modified_fields.push_back(true);
-          partial_values.push_back(v);
+          partial_values.push_back(old_value);
           partial_columns.push_back(schema.GetColumn(i));
         }
-        values.push_back(v);
+        values.push_back(new_value);
       }
       new_tuple = {values, &schema};
       new_tuple.SetRid(base_tuple.GetRid());
