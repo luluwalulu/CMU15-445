@@ -131,15 +131,16 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       // 正常修改，需要删除原来的元组，插入新的元组。同时生成撤销日志并插入
       for (size_t i = 0; i < plan_->target_expressions_.size(); i++) {
         const auto expr = plan_->target_expressions_[i];
-        auto v = expr->Evaluate(&base_tuple, schema);
-        if (v.CompareExactlyEquals(base_tuple.GetValue(&schema, i))) {
+        auto new_val = expr->Evaluate(&base_tuple, schema);
+        auto old_val = base_tuple.GetValue(&schema, i);
+        if (new_val.CompareExactlyEquals(old_val)) {
           modified_fields.push_back(false);
         } else {
           modified_fields.push_back(true);
-          partial_values.push_back(v);
+          partial_values.push_back(old_val);
           partial_columns.push_back(schema.GetColumn(i));
         }
-        values.push_back(v);
+        values.push_back(new_val);
       }
       new_tuple = {values, &schema};
       new_tuple.SetRid(base_tuple.GetRid());
@@ -160,13 +161,6 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       auto new_undo_link = txn->AppendUndoLog(std::move(undo_log));
       txn_mgr->UpdateUndoLink(r, std::make_optional<UndoLink>(new_undo_link), nullptr);
 
-      // base_meta.is_deleted_ = true;
-      // table_heap->UpdateTupleMeta(base_meta, r);
-      // auto opt_rid = table_heap->InsertTuple(new_meta, new_tuple);
-      // if (opt_rid == std::nullopt) {
-      //   throw "update执行器插入失败";
-      // }
-      // r = *opt_rid;
       new_tuple.SetRid(r);
       table_heap->UpdateTupleInPlace(new_meta, new_tuple, r, nullptr);
       update_sum++;
