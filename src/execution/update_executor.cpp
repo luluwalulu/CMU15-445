@@ -118,9 +118,6 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       }
       new_tuple = {values, &schema};
       new_tuple.SetRid(base_tuple.GetRid());
-      if (IsTupleContentEqual(base_tuple, new_tuple)) {
-        continue;
-      }
 
       Schema partial_schema(partial_columns);
       Tuple partial_tuple(partial_values, &partial_schema);
@@ -146,9 +143,6 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       }
       new_tuple = {values, &schema};
       new_tuple.SetRid(base_tuple.GetRid());
-      if (IsTupleContentEqual(base_tuple, new_tuple)) {
-        continue;
-      }
 
       // UndoLog中存储的是base_tuple相关的信息
       Schema partial_schema(partial_columns);
