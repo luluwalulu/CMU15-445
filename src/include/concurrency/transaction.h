@@ -70,7 +70,7 @@ struct UndoLink {
   auto IsValid() const -> bool { return prev_txn_ != INVALID_TXN_ID; }
 };
 
-// UndoLog中记录的都是进行该增量操作之前该元组的状态
+// UndoLog一定属于事务x，意味着undolog是为了记录事务x的写操作，该undolog能够让该元组恢复到提交时间戳为ts_的版本
 struct UndoLog {
   /* Whether this log is a deletion marker */
   bool is_deleted_;
@@ -123,6 +123,7 @@ class Transaction {
   /** Modify an existing undo log. */
   inline auto ModifyUndoLog(int log_idx, UndoLog new_log) {
     std::scoped_lock<std::mutex> lck(latch_);
+    BUSTUB_ASSERT((size_t)log_idx < undo_logs_.size(), "log_idx < undo_logs.size()");
     undo_logs_[log_idx] = std::move(new_log);
   }
 

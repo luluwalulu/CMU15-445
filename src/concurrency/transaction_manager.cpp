@@ -148,33 +148,41 @@ void TransactionManager::GarbageCollection() {
       std::cout<<"RID"<<rid.GetPageId()<<'/'<<rid.GetSlotNum()<<std::endl;
 
       auto heap_ts = base_meta.ts_;
-      auto commit_ts = heap_ts;
-      if (heap_ts < TXN_START_ID) {
-        should_not_erased_ts.emplace(heap_ts);
-      }
+      auto commit_ts = base_meta.ts_;
       UndoLink prev_link{};
       UndoLog undo_log{};
       BUSTUB_ASSERT(!(undo_link && !undo_link->IsValid()), "返回一个undo_link对象但是是无效连接");
 
-      // 回退
+      // 假设一个元组应该保存的日志组成一条版本链，最后一个日志的时间戳对应的事务不需要保存
       while (commit_ts > watermark && undo_link && undo_link->IsValid()) {
+        if (commit_ts < TXN_START_ID) {
+          should_not_erased_ts.emplace(commit_ts);
+        }
+        std::cout<<"commit_ts = "<<commit_ts<<std::endl;
         undo_log = GetUndoLog(*undo_link);
+        auto temp = commit_ts;
         commit_ts = undo_log.ts_;
         prev_link = *undo_link;
         undo_link = undo_log.prev_version_;
-        should_not_erased_ts.emplace(commit_ts);
+
+        if (undo_log.ts_ <= watermark || !undo_link->IsValid()) {
+          commit_ts = temp;
+          std::cout<<"commit_ts被回退到"<<temp<<std::endl;
+          break;
+        }
         // auto txn_id = tsToTxnid[]
       }
 
-      std::cout<<"最后一个版本的commit_ts为"<<commit_ts<<std::endl;
-      if (tsToTxnid.find(commit_ts) != tsToTxnid.end()) {
+      std::cout<<"最终commit_ts为"<<commit_ts<<std::endl;
+      BUSTUB_ASSERT(tsToTxnid.find(commit_ts) != tsToTxnid.end(), "tsToTxnid中一定存在commit_ts");
+      if (undo_link->IsValid()) {
         auto txn_id = tsToTxnid[commit_ts];
-        std::cout<<"最后一个版本的txn_id为"<<ReadableTxnID(txn_id)<<std::endl;
+        // std::cout<<"最后一个版本的txn_id为"<<ReadableTxnID(txn_id)<<std::endl;
         BUSTUB_ASSERT(txn_map_.find(txn_id) != txn_map_.end(), "txn_map中一定能找到对应的txn_id");
         auto txn = txn_map_[txn_id];
         undo_log.prev_version_ = {};
-        std::cout<<"txn的撤销日志总数量为"<<txn->GetUndoLogNum()<<std::endl;
-        std::cout<<"需要修改的log_idx为"<<prev_link.prev_log_idx_<<std::endl;
+        // std::cout<<"txn的撤销日志总数量为"<<txn->GetUndoLogNum()<<std::endl;
+        // std::cout<<"需要修改的log_idx为"<<prev_link.prev_log_idx_<<std::endl;
         txn->ModifyUndoLog(prev_link.prev_log_idx_, undo_log);
       }
 

@@ -114,7 +114,7 @@ void TxnMgrDbg(const std::string &info, TransactionManager *txn_mgr, const Table
 
     // 打印版本链
     while (undo_link.has_value() && undo_link->IsValid()) {
-      std::cout<<"undo_link连接到的上一个事务是"<<undo_link->prev_txn_ - TXN_START_ID<<std::endl;
+      // std::cout<<"undo_link连接到的上一个事务是"<<undo_link->prev_txn_ - TXN_START_ID<<std::endl;
       std::cout<<"  ";
       auto undo_log = txn_mgr->GetUndoLog(*undo_link);
     
