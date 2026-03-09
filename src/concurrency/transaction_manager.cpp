@@ -165,10 +165,12 @@ void TransactionManager::GarbageCollection() {
         tsToTxnid.erase(ts);
       }
 
-      auto txn_id = tsToTxnid[commit_ts];
-      auto txn = txn_map_[txn_id];
-      undo_log.prev_version_ = {};
-      txn->ModifyUndoLog(prev_link.prev_log_idx_, undo_log);
+      if (tsToTxnid.find(commit_ts) != tsToTxnid.end()) {
+        auto txn_id = tsToTxnid[commit_ts];
+        auto txn = txn_map_[txn_id];
+        undo_log.prev_version_ = {};
+        txn->ModifyUndoLog(prev_link.prev_log_idx_, undo_log);
+      }
 
       ++itr;
     }
