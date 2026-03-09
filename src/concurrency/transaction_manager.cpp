@@ -118,6 +118,7 @@ void TransactionManager::GarbageCollection() {
   std::cout<<"当前的水位线为"<<watermark<<std::endl;
   std::cout<<std::endl;
 
+  std::cout<<"执行垃圾回收之前的事务有:"<<std::endl;
   for (auto p : txn_map_) {
     auto txn_id = p.first;
     auto txn = p.second;
@@ -130,6 +131,7 @@ void TransactionManager::GarbageCollection() {
       std::cout<<"txn"<<txn_id - TXN_START_ID<<"的读时间戳为"<<txn->GetReadTs()<<std::endl;
     }
   }
+  std::cout<<std::endl;
 
   // 然后遍历所有表堆上的元素，并回溯直到对应UndoLog的提交时间戳小于水位线，此时可以将该事务Id排除在txn_ids之外
   for (const auto& name : catalog_->GetTableNames()) {
@@ -158,17 +160,15 @@ void TransactionManager::GarbageCollection() {
         should_not_erased.push_back(commit_ts);
       }
 
-      // 回退成功时，我们只知道对应事务的提交时间戳
-      if (commit_ts <= watermark) {
-        for (auto ts : should_not_erased) {
-          tsToTxnid.erase(ts);
-        }
-
-        auto txn_id = tsToTxnid[commit_ts];
-        auto txn = txn_map_[txn_id];
-        undo_log.prev_version_ = {};
-        txn->ModifyUndoLog(prev_link.prev_log_idx_, undo_log);
+      // 即使没有水位线可读的版本，也必须将对应事务移除删除列表
+      for (auto ts : should_not_erased) {
+        tsToTxnid.erase(ts);
       }
+
+      auto txn_id = tsToTxnid[commit_ts];
+      auto txn = txn_map_[txn_id];
+      undo_log.prev_version_ = {};
+      txn->ModifyUndoLog(prev_link.prev_log_idx_, undo_log);
 
       ++itr;
     }

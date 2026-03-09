@@ -1,5 +1,9 @@
 # 当前bug：
 
+- 将锁的问题暂且搁置
+- 发现一处错误，之前一旦发现没有水位线可读的版本，待删除列表中一个对象都不移除。
+  - 该bug修复后，报错AddressSanitizer: SEGV on unknown address 0x000000000028。原因是垃圾回收中的ModifyUndoLog函数。
+
 ---
 
 # 已解决bug：
@@ -7,10 +11,9 @@
 - 当前bug为垃圾回收器可能删了不该删的东西，导致回退的时候尽管undolink有效，但是GetUndoLog却报错undo log not exist
 - **发现错误：我的当前逻辑是只有刚好符合水位线标准的版本才不被删除，剩余都被删除。但是应该只删除水位线以上的更旧的版本**
 - **发现错误：最后一个有效版本的undo_link需要置为无效。由于我们并非修改头undo_link，而是修改某个特定版本的undo_log中存储的undo_link，因此我们需要在transaction中进行修改。**
+
   - 该修改后，undo log not exist的错误仍然存在
   - 且当我试图添加锁时直接报错死锁
-
-
 - update执行器少检查了一个undolink就直接用这个link来获取log了，导致GetUndoLog挂掉
 - 在delete和update执行器中尽可能添加了GetRid，并处理了上面的一条bug，UpdateTest1通过，错误来到UpdateTest2，错误类型为结果不匹配
 - **发现错误原因：一个坏消息是，现在的update执行器不必像之前一样先删除再插入了，我们直接在原地更新即可，因此我们不得不堆代码进行大量修改。我们首先对第二个条件的代码进行修改。**
