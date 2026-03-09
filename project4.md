@@ -1,6 +1,14 @@
 # 当前bug：
 
+- 代码结构进行了整体调整
+
+---
+
+# 已解决bug：
+
+- 需要注意的一点是tsToTxnid中的事务是逐渐被移除的，中途它可能已经不具有所有被提交事务了
 - commit_ts在这样的情景下可能无效：撤销日志为空，堆上元组刚刚插入，此时commit_ts >= TXN_START_ID，tsToTxnid中绝无可能查找到此对象，因此unordered_map会默认构造一个对象。因此下面两条语句构成一个极其危险的场景：得到一个空指针txn。
+
   - 修改完当前bug之后仍然是undo log not exist，和之前挂壁的地方一样，事务17被删除后导致撤销日志不存在。
   - 这说明我**切断连接和选择删除对象的逻辑仍然有误**
 
@@ -8,15 +16,11 @@ auto txn_id=tsToTxnid[commit_ts];
 
 auto txn=txn_map_[txn_id];
 
----
-
-# 已解决bug：
 
 - 将锁的问题暂且搁置
 - 发现一处错误，之前一旦发现没有水位线可读的版本，待删除列表中一个对象都不移除。
+
   - 该bug修复后，报错AddressSanitizer: SEGV on unknown address 0x000000000028。原因是垃圾回收中的ModifyUndoLog函数。
-
-
 - 当前bug为垃圾回收器可能删了不该删的东西，导致回退的时候尽管undolink有效，但是GetUndoLog却报错undo log not exist
 - **发现错误：我的当前逻辑是只有刚好符合水位线标准的版本才不被删除，剩余都被删除。但是应该只删除水位线以上的更旧的版本**
 - **发现错误：最后一个有效版本的undo_link需要置为无效。由于我们并非修改头undo_link，而是修改某个特定版本的undo_log中存储的undo_link，因此我们需要在transaction中进行修改。**

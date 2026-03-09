@@ -93,7 +93,6 @@ auto TransactionManager::Commit(Transaction *txn) -> bool {
 
   // 最终调整
   last_commit_ts_.store(new_ts);
-  // std::cout<<"ID为"<<txn->GetTransactionId() - TXN_START_ID<<"的事务提交成功"<<std::endl;
 
   return true;
 }
@@ -115,6 +114,7 @@ void TransactionManager::GarbageCollection() {
 
   auto watermark = GetWatermark();
   std::unordered_map<timestamp_t, txn_id_t> tsToTxnid;
+  std::unordered_set<timestamp_t> should_not_erased_ts;
   std::cout<<"当前的水位线为"<<watermark<<std::endl;
   std::cout<<std::endl;
 
@@ -126,9 +126,9 @@ void TransactionManager::GarbageCollection() {
     if (txn->GetTransactionState() == TransactionState::ABORTED || txn->GetTransactionState() == TransactionState::COMMITTED) {
       BUSTUB_ASSERT(txn->GetTransactionState() == TransactionState::COMMITTED, "狗屎ABORTED状态");
       tsToTxnid.emplace(txn->GetCommitTs(), txn_id);
-      std::cout<<'t'<<txn_id - TXN_START_ID<<"的提交时间戳为"<<txn->GetCommitTs()<<std::endl;
+      std::cout<<'t'<<ReadableTxnID(txn_id)<<"的提交时间戳为"<<txn->GetCommitTs()<<std::endl;
     } else {
-      std::cout<<"txn"<<txn_id - TXN_START_ID<<"的读时间戳为"<<txn->GetReadTs()<<std::endl;
+      std::cout<<"txn"<<ReadableTxnID(txn_id)<<"的读时间戳为"<<txn->GetReadTs()<<std::endl;
     }
   }
   std::cout<<std::endl;
@@ -144,31 +144,37 @@ void TransactionManager::GarbageCollection() {
       auto base_meta = p.first;
       auto base_tuple = p.second;
       auto rid = base_tuple.GetRid();
-      auto commit_ts = base_meta.ts_;
       auto undo_link = GetUndoLink(rid);
+      std::cout<<"RID"<<rid.GetPageId()<<'/'<<rid.GetSlotNum()<<std::endl;
+
+      auto heap_ts = base_meta.ts_;
+      auto commit_ts = heap_ts;
+      if (heap_ts < TXN_START_ID) {
+        should_not_erased_ts.emplace(heap_ts);
+      }
       UndoLink prev_link{};
       UndoLog undo_log{};
       BUSTUB_ASSERT(!(undo_link && !undo_link->IsValid()), "返回一个undo_link对象但是是无效连接");
-      std::vector<timestamp_t> should_not_erased;
 
       // 回退
-      while (commit_ts > watermark && undo_link->IsValid()) {
+      while (commit_ts > watermark && undo_link && undo_link->IsValid()) {
         undo_log = GetUndoLog(*undo_link);
         commit_ts = undo_log.ts_;
         prev_link = *undo_link;
         undo_link = undo_log.prev_version_;
-        should_not_erased.push_back(commit_ts);
+        should_not_erased_ts.emplace(commit_ts);
+        // auto txn_id = tsToTxnid[]
       }
 
-      // 即使没有水位线可读的版本，也必须将对应事务移除删除列表
-      for (auto ts : should_not_erased) {
-        tsToTxnid.erase(ts);
-      }
-
+      std::cout<<"最后一个版本的commit_ts为"<<commit_ts<<std::endl;
       if (tsToTxnid.find(commit_ts) != tsToTxnid.end()) {
         auto txn_id = tsToTxnid[commit_ts];
+        std::cout<<"最后一个版本的txn_id为"<<ReadableTxnID(txn_id)<<std::endl;
+        BUSTUB_ASSERT(txn_map_.find(txn_id) != txn_map_.end(), "txn_map中一定能找到对应的txn_id");
         auto txn = txn_map_[txn_id];
         undo_log.prev_version_ = {};
+        std::cout<<"txn的撤销日志总数量为"<<txn->GetUndoLogNum()<<std::endl;
+        std::cout<<"需要修改的log_idx为"<<prev_link.prev_log_idx_<<std::endl;
         txn->ModifyUndoLog(prev_link.prev_log_idx_, undo_log);
       }
 
@@ -176,10 +182,14 @@ void TransactionManager::GarbageCollection() {
     }
   }
 
+  // 进行实际的删除操作
   for (const auto& p : tsToTxnid) {
+    auto commit_ts = p.first;
     auto txn_id = p.second;
-    txn_map_.erase(txn_id);
-    std::cout<<'t'<<txn_id - TXN_START_ID<<"被删除"<<std::endl;
+    if (should_not_erased_ts.find(commit_ts) == should_not_erased_ts.end()) {
+      txn_map_.erase(txn_id);
+      std::cout<<'t'<<ReadableTxnID(txn_id)<<"被删除"<<std::endl;
+    }
   }
 }
 

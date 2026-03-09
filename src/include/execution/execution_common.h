@@ -34,4 +34,8 @@ void TxnMgrDbg(const std::string &info, TransactionManager *txn_mgr, const Table
 // your implementation. Please add your own ones as necessary so that you do not need to write
 // the same code everywhere.
 
+constexpr txn_id_t ReadableTxnID(txn_id_t txn) {
+  return txn - TXN_START_ID;
+}
+
 }  // namespace bustub

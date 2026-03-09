@@ -27,6 +27,7 @@
 #include "concurrency/watermark.h"
 #include "recovery/log_manager.h"
 #include "storage/table/tuple.h"
+#include "execution/execution_common.h"
 
 namespace bustub {
 
