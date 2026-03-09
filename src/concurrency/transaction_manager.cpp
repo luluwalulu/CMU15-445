@@ -110,6 +110,66 @@ void TransactionManager::Abort(Transaction *txn) {
   running_txns_.RemoveTxn(txn->read_ts_);
 }
 
-void TransactionManager::GarbageCollection() { UNIMPLEMENTED("not implemented"); }
+void TransactionManager::GarbageCollection() {
+  auto watermark = GetWatermark();
+  std::unordered_map<timestamp_t, txn_id_t> tsToTxnid;
+
+  for (auto p : txn_map_) {
+    auto txn_id = p.first;
+    auto txn = p.second;
+
+    if (txn->GetTransactionState() == TransactionState::ABORTED || txn->GetTransactionState() == TransactionState::COMMITTED) {
+      BUSTUB_ASSERT(txn->GetTransactionState() == TransactionState::COMMITTED, "狗屎ABORTED状态");
+      tsToTxnid.emplace(txn->GetCommitTs(), txn_id);
+    }
+  }
+
+  std::cout<<"当前的水位线为"<<watermark<<std::endl;
+  std::cout<<std::endl;
+  for (auto p :tsToTxnid) {
+    std::cout<<'t'<<p.second - TXN_START_ID<<"的提交时间戳为"<<p.first<<std::endl;
+  }
+
+  // 然后遍历所有表堆上的元素，并回溯直到对应UndoLog的提交时间戳小于水位线，此时可以将该事务Id排除在txn_ids之外
+  for (const auto& name : catalog_->GetTableNames()) {
+    auto table = catalog_->GetTable(name);
+    auto table_heap = table->table_.get();
+    auto itr = table_heap->MakeIterator();
+
+    while (!itr.IsEnd()) {
+      auto p = itr.GetTuple();
+      auto base_meta = p.first;
+      auto base_tuple = p.second;
+      auto rid = base_tuple.GetRid();
+      auto commit_ts = base_meta.ts_;
+      auto undo_link = GetUndoLink(rid);
+      BUSTUB_ASSERT(!(undo_link && !undo_link->IsValid()), "返回一个undo_link对象但是是无效连接");
+      std::vector<timestamp_t> should_not_erased;
+
+      // 回退
+      while (commit_ts > watermark && undo_link->IsValid()) {
+        auto undo_log = GetUndoLog(*undo_link);
+        commit_ts = undo_log.ts_;
+        undo_link = undo_log.prev_version_;
+        should_not_erased.push_back(commit_ts);
+      }
+
+      // 回退成功时，我们只知道对应事务的提交时间戳
+      if (commit_ts <= watermark) {
+        for (auto ts : should_not_erased) {
+          tsToTxnid.erase(ts);
+        }
+      }
+
+      ++itr;
+    }
+  }
+
+  for (const auto& p : tsToTxnid) {
+    auto txn_id = p.second;
+    txn_map_.erase(txn_id);
+    std::cout<<'t'<<txn_id - TXN_START_ID<<"被删除"<<std::endl;
+  }
+}
 
 }  // namespace bustub
